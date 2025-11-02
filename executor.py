@@ -64,10 +64,11 @@ def get_open_positions():
 
                 positions[symbol].append({
                     "type": pos["direction"].lower(),
-                    "entry": pos["level"],  # Исправлено: было "openLevel"
+                    "entry": pos["level"],
                     "dealId": deal_id,
+                    "workingOrderId": pos.get("workingOrderId", ""),  # Добавляем стабильный идентификатор
                     "created": pos["createdDate"],
-                    "hold_minutes": cache.get(deal_id, 60)  # По умолчанию 60 минут
+                    "hold_minutes": cache.get(deal_id, DEFAULT_HOLD_TIME_MINUTES)  # По умолчанию из конфигурации
                 })
 
         # Примечание: автоочистка кэша отключена из-за несоответствия dealId и dealReference
@@ -79,7 +80,7 @@ def get_open_positions():
         error(f"❌ Ошибка получения позиций: {str(e)}")
         return {}
 
-def create_order(symbol, direction, price, hold_minutes=60):
+def create_order(symbol, direction, price, hold_minutes=DEFAULT_HOLD_TIME_MINUTES):
     """Создает ордер с TP/SL через Capital.com"""
     init_api_session()  # Убедимся, что сессия активна
     # Согласно Capital.com API документации, правильный endpoint - POST /positions (не /positions/otc)
@@ -150,11 +151,37 @@ def create_order(symbol, direction, price, hold_minutes=60):
             error(f"❌ API не вернул dealReference. Ответ: {response_data}")
             raise Exception(f"❌ API не вернул dealReference в ответе: {response_data}")
 
-        # Согласно Capital.com API: нужно вызвать /confirms/{dealReference} чтобы получить dealId
-        # Но для простоты используем dealReference как ключ кэша
-        # hold_minutes сохраняется в кэше как {deal_reference: hold_minutes}
+        # Получаем dealId через /confirms/{dealReference}
+        confirm_url = f"{API_BASE}confirms/{deal_reference}"
+        confirm_headers = get_headers()
+
+        confirm_response = make_request(confirm_url, headers=confirm_headers)
+        if confirm_response is None:
+            raise Exception(f"❌ Не удалось подтвердить ордер для dealReference={deal_reference}")
+
+        confirm_data = confirm_response.json()
+        deal_id = confirm_data.get("dealId")
+
+        if not deal_id:
+            error(f"❌ /confirms не вернул dealId. Ответ: {confirm_data}")
+            raise Exception(f"❌ /confirms не вернул dealId в ответе: {confirm_data}")
+
+        # Сохраняем в кэш оба ключа для надежного поиска
         cache = load_position_cache()
-        cache[deal_reference] = hold_minutes
+
+        # 1. Сохраняем по dealId (меняется, но используется в /positions)
+        cache[deal_id] = hold_minutes
+
+        # 2. Получаем позиции чтобы найти workingOrderId и сохранить его тоже
+        positions = get_open_positions()
+        for symbol, pos_list in positions.items():
+            for pos in pos_list:
+                if pos.get("dealId") == deal_id:
+                    working_order_id = pos.get("workingOrderId", deal_id)  # Если нет workingOrderId, используем dealId
+                    cache[working_order_id] = hold_minutes
+                    info(f"📋 Сохранено в кэш: dealId={deal_id[:20]}..., workingOrderId={working_order_id[:20]}...")
+                    break
+
         save_position_cache(cache)
 
         # Логируем сделку в trades.log
@@ -201,7 +228,7 @@ def main(predictions):
 
         # Открываем новые позиции
         if pred["confidence"] > MIN_CONFIDENCE_THRESHOLD:
-            hold_minutes = pred.get("hold_minutes", 60)  # По умолчанию 60 минут
+            hold_minutes = pred.get("hold_minutes", DEFAULT_HOLD_TIME_MINUTES)  # По умолчанию из конфигурации
 
             if pred["action"] == "buy":
                 info(f"📈 {symbol}: сигнал BUY (confidence={pred['confidence']}, причина: {pred['reason']})")

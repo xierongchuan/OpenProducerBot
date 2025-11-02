@@ -22,6 +22,15 @@ log_warning() {
     echo -e "${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1"
 }
 
+# Переходим в директорию со скриптом
+cd "$(dirname "$0")"
+
+# Загружаем переменные из .env файла если он существует
+if [ -f .env ]; then
+    log_message "Загрузка переменных из .env файла..."
+    source .env
+fi
+
 # Проверка наличия Python
 if ! command -v python3 &> /dev/null; then
     log_error "Python3 не найден! Установите Python 3.12+"
@@ -40,9 +49,6 @@ if [ -z "$CAP_API_USERNAME" ] || [ -z "$CAP_API_PASSWORD" ] || [ -z "$DEEPSEEK_A
     log_warning "  source .env"
     exit 1
 fi
-
-# Переходим в директорию со скриптом
-cd "$(dirname "$0")"
 
 # Создаем директории если их нет
 mkdir -p data/prices data/news charts

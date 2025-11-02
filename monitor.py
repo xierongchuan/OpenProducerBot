@@ -61,8 +61,19 @@ def main():
             # Проверяем время удержания позиции
             try:
                 created_time = position.get("created", "")
-                hold_minutes = position.get("hold_minutes", 60)  # По умолчанию 60 минут
                 deal_id = position.get("dealId", "")
+
+                # Загружаем кэш и получаем hold_minutes из кэша для этой сделки
+                # РЕШЕНИЕ: Используем workingOrderId (стабильный) вместо dealId (меняется)
+                cache = executor.load_position_cache()
+                working_order_id = position.get("workingOrderId", "")
+
+                # Ищем в кэше по workingOrderId (приоритет)
+                hold_minutes = cache.get(working_order_id, None)
+
+                # Если не нашли по workingOrderId, ищем по dealId
+                if hold_minutes is None:
+                    hold_minutes = cache.get(deal_id, DEFAULT_HOLD_TIME_MINUTES)
 
                 if created_time and deal_id:
                     # Парсим время создания позиции

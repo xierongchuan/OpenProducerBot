@@ -35,6 +35,7 @@ POSITION_SIZE = 0.1                  # Размер ордера в лотах
 TAKE_PROFIT_PERCENT = 1.5            # Take Profit в процентах
 STOP_LOSS_PERCENT = 2.0              # Stop Loss в процентах
 MIN_CONFIDENCE_THRESHOLD = 0.6       # Минимальная уверенность AI для открытия позиции (0.0-1.0)
+DEFAULT_HOLD_TIME_MINUTES = 60       # Время удержания позиции по умолчанию (в минутах)
 
 # Пороговые значения для AI-анализа
 AI_THRESHOLDS = {

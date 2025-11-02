@@ -35,10 +35,11 @@ def get_prediction(prompt):
     except Exception as e:
         error(f"❌ Ошибка DeepSeek API: {str(e)}")
         # Возвращаем dict вместо строки JSON
+        from config import DEFAULT_HOLD_TIME_MINUTES
         return {
             "action": "hold",
             "confidence": 0.0,
-            "hold_minutes": 30,
+            "hold_minutes": DEFAULT_HOLD_TIME_MINUTES,
             "reason": f"Ошибка API: {str(e)}"
         }
 
@@ -69,7 +70,8 @@ def parse_response(response):
         
         # Добавляем время удержания по умолчанию
         if "hold_minutes" not in data:
-            data["hold_minutes"] = 30
+            from config import DEFAULT_HOLD_TIME_MINUTES
+            data["hold_minutes"] = DEFAULT_HOLD_TIME_MINUTES
             
         # Добавляем причину по умолчанию
         if "reason" not in data:
@@ -78,10 +80,11 @@ def parse_response(response):
         return data
     except Exception as e:
         error(f"❌ Ошибка парсинга ответа: {str(e)}")
+        from config import DEFAULT_HOLD_TIME_MINUTES
         return {
             "action": "hold",
             "confidence": 0.0,
-            "hold_minutes": 30,
+            "hold_minutes": DEFAULT_HOLD_TIME_MINUTES,
             "reason": "Ошибка парсинга ответа DeepSeek"
         }
 
@@ -92,11 +95,13 @@ def main(analyses):
         info(f"🧠 Генерация прогноза для {analysis['symbol']}...")
         response = get_prediction(analysis["prompt"])
 
+        # TODO: Убрать костыль
         # Безопасное логирование ответа (может быть dict или str)
-        if isinstance(response, str):
-            info(f"📨 Ответ DeepSeek: {response[:200]}...")
-        else:
-            info(f"📨 Ответ DeepSeek: (dict) {response}")
+        # if isinstance(response, str):
+        #     info(f"📨 Ответ DeepSeek: {response[:200]}...")
+        # else:
+        #     info(f"📨 Ответ DeepSeek: (dict) {response}")
+        info(f"📨 Ответ DeepSeek: (dict) {response}")
 
         prediction = parse_response(response)
         

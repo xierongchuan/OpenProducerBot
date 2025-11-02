@@ -79,7 +79,7 @@ def analyze_symbol(symbol):
     prompt = f"""
     Ты — профессиональный трейдер с 10-летним опытом. Проанализируй {symbol} строго по этим правилам:
 
-    ### ДАННЫЕ (последние 50 свечей 5-минутного таймфрейма):
+    ### ДАННЫЕ (последние 300 свечей 5-минутного таймфрейма - 24 часа истории):
     - Текущая цена: {current_price:.5f}
     - SMA({AI_THRESHOLDS['SMA_PERIOD']}): {sma:.5f} | Тренд: {'восходящий' if current_price > sma else 'нисходящий'}
     - RSI({AI_THRESHOLDS['RSI_PERIOD']}): {rsi:.2f} | Состояние: {'перекупленность' if rsi > AI_THRESHOLDS['RSI_OVERBOUGHT'] else 'перепроданность' if rsi < AI_THRESHOLDS['RSI_OVERSOLD'] else 'нейтрально'}

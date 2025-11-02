@@ -23,7 +23,7 @@ crontab -r                               # Удалить все задачи
 ### Мониторинг
 ```bash
 ./monitor_logs.sh                        # Интерактивный мониторинг
-tail -f data/code.log                    # Логи системы
+tail -f data/steps.log                    # Логи системы
 tail -f data/trades.log                  # Логи сделок
 ```
 
@@ -37,12 +37,12 @@ python3 -c "import logger, config, utils" # Проверка импортов
 
 ```bash
 # Просмотр
-tail -n 50 data/code.log                 # Последние 50 строк
-grep ERROR data/code.log                 # Только ошибки
+tail -n 50 data/steps.log                 # Последние 50 строк
+grep ERROR data/steps.log                 # Только ошибки
 grep "📌\|✅" data/trades.log             # Торговые операции
 
 # Статистика
-wc -l data/code.log                      # Количество событий
+wc -l data/steps.log                      # Количество событий
 wc -l data/trades.log                    # Количество сделок
 ```
 
@@ -111,7 +111,7 @@ OpenProducer/
 ├── *.sh                                # 3 Bash скрипта
 ├── *.md                                # 7 файлов документации
 ├── data/                               # Данные и логи
-│   ├── code.log                        # Логи системы
+│   ├── steps.log                        # Логи системы
 │   ├── trades.log                      # Логи сделок
 │   ├── prices/                         # Данные о ценах
 │   └── news/                           # Новости

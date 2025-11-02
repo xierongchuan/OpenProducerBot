@@ -57,7 +57,7 @@ if python3 main.py; then
     log_message "✅ Торговый бот успешно завершил работу"
 else
     log_error "❌ Торговый бот завершился с ошибкой"
-    log_warning "Проверьте логи: data/code.log"
+    log_warning "Проверьте логи: data/steps.log"
     exit 1
 fi
 
@@ -67,4 +67,4 @@ echo "=== $(date) ===" >> data/cron.log 2>/dev/null || true
 echo "Trading bot cycle completed" >> data/cron.log 2>/dev/null || true
 echo "" >> data/cron.log 2>/dev/null || true
 
-log_message "Завершено. Логи сохранены в data/code.log и data/trades.log"
+log_message "Завершено. Логи сохранены в data/steps.log и data/trades.log"

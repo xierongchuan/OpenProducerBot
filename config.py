@@ -45,7 +45,7 @@ AI_THRESHOLDS = {
     "STRONG_SIGNAL_CONFIDENCE": 0.8, # Порог для "сильного сигнала" (0.8+)
     "SMA_PERIOD": 20,                # Период SMA для анализа тренда
     "RSI_PERIOD": 14,                # Период RSI для анализа
-    "HOLD_TIMES": [15, 30, 60],      # Время удержания позиции в минутах (варианты)
+    "HOLD_TIMES": [10, 15, 30, 60, 120], # Время удержания: 10 мин, 15 мин, 30 мин, 1 час, 2 часа
 }
 
 # DeepSeek API (обязательно установите DEEPSEEK_API_KEY)
@@ -54,6 +54,35 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 # Пути к данным
 DATA_DIR = "data"
 CHARTS_DIR = "charts"
+
+# Настройки графиков
+CHART_RANGES = {
+    "1D": {"days": 1, "candles": 288},   # 288 свечей * 5 минут = 24 часа
+    "3D": {"days": 3, "candles": 864},   # 3 дня
+    "1W": {"days": 7, "candles": 2016},  # 1 неделя
+}
+DEFAULT_CHART_RANGE = "1D"  # По умолчанию показываем 1 день
+
+# Настройки очистки старых файлов
+CLEANUP_SETTINGS = {
+    "cleanup_old_charts": True,     # Удалять старые графики
+    "charts_retention_days": 7,     # Хранить графики 7 дней
+    "cleanup_old_data": True,       # Удалять старые данные
+    "data_retention_days": 30,      # Хранить данные 30 дней
+}
+
+# News API настройки (для получения реальных новостей)
+NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
+ALPHAVANTAGE_KEY = os.getenv("ALPHAVANTAGE_KEY", "")
+FINNHUB_KEY = os.getenv("FINNHUB_KEY", "")
+
+# Настройки новостей
+NEWS_SETTINGS = {
+    "use_real_news": True,               # Использовать реальные новости (нужны API ключи)
+    "provider": "newsapi",          # newsapi, alphavantage, finnhub
+    "max_news_items": 10,                # Максимум новостей для анализа
+    "news_timeout_seconds": 30,          # Таймаут запроса новостей
+}
 
 # API Endpoint для демо и реального режима
 # ВАЖНО: Демо-счет - это НЕ отдельный тип аккаунта!

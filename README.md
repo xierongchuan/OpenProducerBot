@@ -204,11 +204,11 @@ python3 -m py_compile *.py
 python3 -c "import logger, config, utils; print('OK')"
 
 # Мониторинг логов в реальном времени
-tail -f data/code.log      # Все события системы
+tail -f data/steps.log      # Все события системы
 tail -f data/trades.log    # Только торговые операции
 
 # Поиск ошибок
-grep ERROR data/code.log
+grep ERROR data/steps.log
 ```
 
 ---
@@ -306,7 +306,7 @@ docker logs -f trading-bot
 
 ### Файлы логов
 
-**data/code.log** - Все события системы
+**data/steps.log** - Все события системы
 ```
 2025-11-02 20:11:27 | INFO | code | 📊 ШАГ 1: Сбор данных
 2025-11-02 20:11:28 | ERROR | code | ❌ Ошибка: Connection timeout
@@ -322,13 +322,13 @@ docker logs -f trading-bot
 
 ```bash
 # Все события системы
-tail -f data/code.log
+tail -f data/steps.log
 
 # Только торговые операции
 tail -f data/trades.log
 
 # Поиск ошибок
-grep ERROR data/code.log
+grep ERROR data/steps.log
 
 # Поиск торговых операций
 grep "📌\|✅\|❌\|⏰" data/trades.log
@@ -337,7 +337,7 @@ grep "📌\|✅\|❌\|⏰" data/trades.log
 grep "2025-11-02" data/trades.log | wc -l
 
 # Количество строк в логах
-wc -l data/code.log data/trades.log
+wc -l data/steps.log data/trades.log
 ```
 
 ---
@@ -461,7 +461,7 @@ python3 executor.py   # Тест управления позициями
 **Q: Что делать если бот не запускается?**
 **A:**
 1. Проверьте переменные окружения: `echo $CAP_API_KEY`
-2. Проверьте логи: `tail -f data/code.log`
+2. Проверьте логи: `tail -f data/steps.log`
 3. Убедитесь что аккаунт Capital.com активен
 4. Проверьте статус DeepSeek API
 
@@ -512,7 +512,7 @@ python3 executor.py   # Тест управления позициями
 ```
 OpenProducer/
 ├── data/
-│   ├── code.log              # Логи выполнения кода
+│   ├── steps.log              # Логи выполнения кода
 │   ├── trades.log            # Логи торговых операций
 │   ├── prices/               # Сырые данные о ценах
 │   │   ├── EUR/USD.json

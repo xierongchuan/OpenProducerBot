@@ -17,9 +17,9 @@ show_stats() {
     echo -e "${GREEN}📊 СТАТИСТИКА:${NC}"
     echo ""
     
-    if [ -f "data/code.log" ]; then
-        TOTAL_EVENTS=$(wc -l < data/code.log)
-        ERRORS=$(grep -c "ERROR" data/code.log 2>/dev/null || echo "0")
+    if [ -f "data/steps.log" ]; then
+        TOTAL_EVENTS=$(wc -l < data/steps.log)
+        ERRORS=$(grep -c "ERROR" data/steps.log 2>/dev/null || echo "0")
         echo -e "  📄 Лог системы: ${YELLOW}$TOTAL_EVENTS${NC} событий, ${RED}$ERRORS${NC} ошибок"
     fi
     
@@ -46,7 +46,7 @@ read -p "Ваш выбор (0-5): " choice
 case $choice in
     1)
         echo -e "${BLUE}=== Логи системы ===${NC}"
-        tail -n 20 -f data/code.log 2>/dev/null || echo "Файл не найден"
+        tail -n 20 -f data/steps.log 2>/dev/null || echo "Файл не найден"
         ;;
     2)
         echo -e "${BLUE}=== Логи сделок ===${NC}"
@@ -54,7 +54,7 @@ case $choice in
         ;;
     3)
         echo -e "${BLUE}=== Ошибки ===${NC}"
-        grep "ERROR" data/code.log 2>/dev/null | tail -n 20 || echo "Ошибок не найдено"
+        grep "ERROR" data/steps.log 2>/dev/null | tail -n 20 || echo "Ошибок не найдено"
         ;;
     4)
         echo -e "${BLUE}=== Торговые операции ===${NC}"
@@ -65,7 +65,7 @@ case $choice in
         while true; do
             clear
             echo -e "${BLUE}=== Логи системы ===${NC}"
-            tail -n 10 data/code.log 2>/dev/null || echo "Файл не найден"
+            tail -n 10 data/steps.log 2>/dev/null || echo "Файл не найден"
             echo ""
             echo -e "${BLUE}=== Логи сделок ===${NC}"
             tail -n 10 data/trades.log 2>/dev/null || echo "Файл не найден"

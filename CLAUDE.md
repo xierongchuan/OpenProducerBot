@@ -11,7 +11,7 @@ This is an automated trading system that integrates with Capital.com API for tra
 ### Core Components
 
 - **main.py**: Entry point, orchestrates the complete trading pipeline
-- **logger.py**: Centralized logging system with dual-level logging (code.log for all events, trades.log for trading operations only)
+- **logger.py**: Centralized logging system with dual-level logging (steps.log for all events, trades.log for trading operations only)
 - **collector.py**: Fetches price data and news from Capital.com API
 - **analyzer.py**: Calculates technical indicators (SMA, RSI) and generates analysis prompts
 - **predict.py**: Sends prompts to DeepSeek API for trading predictions
@@ -77,16 +77,16 @@ python3 -m py_compile *.py
 python3 -c "import logger, config, utils; print('OK')"
 
 # Monitor logs in real-time
-tail -f data/code.log      # All system events
+tail -f data/steps.log      # All system events
 tail -f data/trades.log    # Trading operations only
 
 # Search for errors
-grep ERROR data/code.log
+grep ERROR data/steps.log
 ```
 
 ### Log Files
 
-- `data/code.log`: All system events (INFO, WARNING, ERROR, DEBUG)
+- `data/steps.log`: All system events (INFO, WARNING, ERROR, DEBUG)
   - Format: `%(asctime)s | %(levelname)-8s | %(name)s | %(message)s`
 - `data/trades.log`: Only trading operations
   - Format: `%(asctime)s | %(message)s`
@@ -96,7 +96,7 @@ grep ERROR data/code.log
 ```
 OpenProducer/
 ├── data/
-│   ├── code.log              # All system events
+│   ├── steps.log              # All system events
 │   ├── trades.log            # Trading operations only
 │   ├── prices/               # OHLCV price data
 │   │   ├── EUR_USD.json

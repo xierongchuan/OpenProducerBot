@@ -2,49 +2,166 @@ import json
 import os
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from datetime import datetime
-import pandas as pd
-from config import SYMBOLS, DATA_DIR, CHARTS_DIR
+from datetime import datetime, timedelta
+
+# Проверяем наличие pandas
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+
+from config import SYMBOLS, DATA_DIR, CHARTS_DIR, CLEANUP_SETTINGS, AI_THRESHOLDS
 from logger import info, error
 from symbols import get_filename
+
+def calculate_rsi(closes, period=14):
+    """Рассчитывает RSI индикатор"""
+    if len(closes) < 2:
+        return [50.0] * len(closes)
+
+    deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+    gains = [d for d in deltas if d > 0]
+    losses = [-d for d in deltas if d < 0]
+
+    rsi_values = [50.0]  # Первое значение RSI
+
+    for i in range(1, len(closes)):
+        # Используем среднее по доступным данным
+        avg_gain = sum(gains[:min(i, len(gains))]) / min(i, len(deltas) if deltas else 1)
+        avg_loss = sum(losses[:min(i, len(losses))]) / min(i, len(deltas) if deltas else 1)
+
+        if avg_loss == 0:
+            if avg_gain == 0:
+                rsi = 50.0
+            else:
+                rsi = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+
+        rsi_values.append(round(rsi, 2))
+
+    return rsi_values
+
+def cleanup_old_files():
+    """Удаляет старые файлы графиков и данных"""
+    if not CLEANUP_SETTINGS["cleanup_old_charts"]:
+        return
+
+    try:
+        retention_days = CLEANUP_SETTINGS["charts_retention_days"]
+        cutoff_date = datetime.now() - timedelta(days=retention_days)
+
+        # Очищаем старые графики
+        if os.path.exists(CHARTS_DIR):
+            removed_count = 0
+            for filename in os.listdir(CHARTS_DIR):
+                filepath = os.path.join(CHARTS_DIR, filename)
+                if os.path.isfile(filepath):
+                    file_time = datetime.fromtimestamp(os.path.getctime(filepath))
+                    if file_time < cutoff_date:
+                        os.remove(filepath)
+                        removed_count += 1
+
+            if removed_count > 0:
+                info(f"🧹 Удалено {removed_count} старых графиков (старше {retention_days} дней)")
+
+        # Очищаем старые данные о ценах
+        if CLEANUP_SETTINGS["cleanup_old_data"]:
+            retention_days = CLEANUP_SETTINGS["data_retention_days"]
+            cutoff_date = datetime.now() - timedelta(days=retention_days)
+
+            prices_dir = f"{DATA_DIR}/prices"
+            if os.path.exists(prices_dir):
+                removed_count = 0
+                for filename in os.listdir(prices_dir):
+                    filepath = os.path.join(prices_dir, filename)
+                    if os.path.isfile(filepath):
+                        file_time = datetime.fromtimestamp(os.path.getctime(filepath))
+                        if file_time < cutoff_date:
+                            os.remove(filepath)
+                            removed_count += 1
+
+                if removed_count > 0:
+                    info(f"🧹 Удалено {removed_count} старых файлов данных (старше {retention_days} дней)")
+
+    except Exception as e:
+        error(f"❌ Ошибка при очистке старых файлов: {str(e)}")
 
 def plot_symbol(symbol):
     """Строит график для символа и сохраняет как PNG"""
     # Загружаем данные
     with open(f"{DATA_DIR}/prices/{get_filename(symbol)}.json") as f:
         prices = json.load(f)
-    
+
     # Подготавливаем данные
     timestamps = [candle["snapshotTimeUTC"] for candle in prices]
     closes = [float(candle["closePrice"]["bid"]) for candle in prices]
-    
+
     # Конвертируем временные метки в datetime объекты
-    dates = pd.to_datetime(timestamps)
-    
-    # Строим график
-    plt.figure(figsize=(14, 7))
-    plt.plot(dates, closes, label="Цена", color="#1f77b4", linewidth=2)
-    
-    # Добавляем индикаторы
-    if len(closes) >= 20:
-        sma = [sum(closes[max(0, i-19):i+1])/min(20, i+1) for i in range(len(closes))]
-        plt.plot(dates, sma, label="SMA(20)", color="#ff7f0e", linestyle="--", linewidth=1.5)
-    
-    # Оформление
-    plt.title(f"{symbol} - {datetime.now().strftime('%Y-%m-%d %H:%M')}", fontsize=16, pad=20)
-    plt.xlabel("Время", fontsize=12, labelpad=10)
-    plt.ylabel("Цена", fontsize=12, labelpad=10)
-    plt.legend(fontsize=10)
-    plt.grid(alpha=0.2)
-    
-    # Форматирование оси X
-    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    plt.gcf().autofmt_xdate()  # Поворот меток
-    
-    # Добавляем текущую цену в заголовок
+    if PANDAS_AVAILABLE:
+        import pandas as pd
+        dates = pd.to_datetime(timestamps)
+    else:
+        try:
+            from dateutil import parser
+            dates = [parser.parse(ts) for ts in timestamps]
+        except ImportError:
+            dates = [datetime.fromisoformat(ts.replace('Z', '+00:00')) for ts in timestamps]
+
+    # Рассчитываем индикаторы
+    sma_period = AI_THRESHOLDS["SMA_PERIOD"]
+    rsi_period = AI_THRESHOLDS["RSI_PERIOD"]
+
+    # SMA
+    if len(closes) >= sma_period:
+        sma = [sum(closes[max(0, i-sma_period+1):i+1])/min(sma_period, i+1)
+               for i in range(len(closes))]
+    else:
+        sma = [sum(closes) / len(closes)] * len(closes)
+
+    # RSI
+    rsi = calculate_rsi(closes, rsi_period)
+
+    # Создаем фигуру с двумя subplot'ами
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), gridspec_kw={'height_ratios': [3, 1]})
+
+    # Верхний график - цена и SMA
+    ax1.plot(dates, closes, label="Цена", color="#1f77b4", linewidth=2)
+    ax1.plot(dates, sma, label=f"SMA({sma_period})", color="#ff7f0e", linestyle="--", linewidth=1.5)
+
+    # Оформление верхнего графика
+    ax1.set_title(f"{symbol} - {datetime.now().strftime('%Y-%m-%d %H:%M')}", fontsize=16, pad=20)
+    ax1.set_ylabel("Цена", fontsize=12, labelpad=10)
+    ax1.legend(fontsize=10, loc='upper left')
+    ax1.grid(alpha=0.2)
+
+    # Добавляем текущую цену
     current_price = closes[-1]
-    plt.suptitle(f"Текущая цена: {current_price:.5f}", fontsize=14, y=0.96, color="#d62728")
-    
+    ax1.text(0.02, 0.98, f"Текущая цена: {current_price:.5f}",
+             transform=ax1.transAxes, fontsize=12,
+             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='#d62728', alpha=0.1))
+
+    # Нижний график - RSI
+    ax2.plot(dates, rsi, label=f"RSI({rsi_period})", color="#2ca02c", linewidth=2)
+    ax2.axhline(y=70, color='r', linestyle=':', alpha=0.7, label="Перекупленность (70)")
+    ax2.axhline(y=30, color='g', linestyle=':', alpha=0.7, label="Перепроданность (30)")
+    ax2.fill_between(dates, 70, 100, alpha=0.1, color='red')
+    ax2.fill_between(dates, 0, 30, alpha=0.1, color='green')
+
+    # Оформление нижнего графика
+    ax2.set_ylabel("RSI", fontsize=12, labelpad=10)
+    ax2.set_xlabel("Время", fontsize=12, labelpad=10)
+    ax2.set_ylim(0, 100)
+    ax2.legend(fontsize=9, loc='upper left')
+    ax2.grid(alpha=0.2)
+
+    # Форматирование оси X для обоих графиков
+    for ax in [ax1, ax2]:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        fig.autofmt_xdate()  # Поворот меток для всего figure
+
     # Сохраняем
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     filename = f"{CHARTS_DIR}/{get_filename(symbol)}_{timestamp}.png"
@@ -59,6 +176,9 @@ def main():
 
     # Убеждаемся что директория существует
     os.makedirs(CHARTS_DIR, exist_ok=True)
+
+    # Очищаем старые файлы
+    cleanup_old_files()
 
     for symbol in SYMBOLS:
         try:

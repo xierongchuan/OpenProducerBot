@@ -7,6 +7,7 @@ from logger import info, error, warning
 _cached_tokens = None
 _tokens_cache_time = 0
 TOKEN_CACHE_TTL = 600  # 10 минут (согласно Capital.com API)
+_session_initialized = False  # Флаг инициализации сессии
 
 def get_session_token():
     """Получает базовые токены через логин с email и API ключом"""
@@ -207,20 +208,35 @@ def get_headers():
         "Accept": "application/json"
     }
 
-def init_api_session():
-    """Инициализация сессии: логин + выбор счета"""
+def init_api_session(force=False):
+    """Инициализация сессии: логин + выбор счета
+
+    Args:
+        force (bool): Принудительно переинициализировать сессию (по умолчанию False)
+    """
+    global _session_initialized
+
+    # Проверяем, инициализирована ли уже сессия (если не принудительно)
+    if _session_initialized and not force:
+        return
+
     info("🚀 Инициализация API сессии...")
 
     try:
         get_session_token()  # Первичная авторизация
         select_account()     # Выбор демо/реального счета
+        _session_initialized = True
         info("✅ API сессия инициализирована успешно")
     except Exception as e:
+        # При ошибке сбрасываем флаг
+        _session_initialized = False
         error(f"❌ Ошибка инициализации API сессии: {str(e)}")
         raise
 
 def make_request(url, method="get", **kwargs):
     """Универсальный метод для API-запросов с повторными попытками"""
+    global _session_initialized
+
     max_retries = 3
     method_upper = method.upper()
 
@@ -243,6 +259,7 @@ def make_request(url, method="get", **kwargs):
             # Обработка 401 Unauthorized (сессия устарела)
             if response.status_code == 401 and attempt < max_retries - 1:
                 warning(f"   🔄 Сессия устарела, перезапускаем инициализацию... (попытка {attempt + 1})")
+                _session_initialized = False  # Сбрасываем флаг для переинициализации
                 init_api_session()
                 time.sleep(1)
                 continue

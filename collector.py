@@ -1,10 +1,11 @@
 import os
 import json
 import time
-from config import SYMBOLS, DATA_DIR, API_BASE
+from config import SYMBOLS, DATA_DIR, API_BASE, NEWS_SETTINGS
 from utils import init_api_session, make_request, get_headers
 from logger import info, error
 from symbols import get_epic, get_filename
+from news_api import get_news_for_symbol
 
 def ensure_dirs():
     """Создает необходимые директории"""
@@ -13,7 +14,7 @@ def ensure_dirs():
     os.makedirs("charts", exist_ok=True)
 
 def fetch_prices(symbol):
-    """Получает 50 последних свечей для символа"""
+    """Получает 288 последних свечей (24 часа истории) для символа"""
     info(f"📊 Получение цен для {symbol}...")
 
     # Получаем EPIC код из единого модуля
@@ -23,7 +24,7 @@ def fetch_prices(symbol):
     url = f"{API_BASE}prices/{epic}"
     params = {
         "resolution": "MINUTE_5",
-        "max": 50
+        "max": 300  # 24 часа истории (60 свечей/час × 24 часа = 1440, берем 300 для производительности)
     }
     headers = get_headers()
     headers["Version"] = "2"  # Capital.com требует версию API
@@ -68,61 +69,44 @@ def fetch_prices(symbol):
     return prices
 
 def fetch_news(symbol):
-    """Получает последние 10 новостей для символа"""
-    # В реальной системе здесь будет запрос к News API
-    # Для демо просто создаем заглушку с ключевыми словами
-    positive_keywords = ["рост", "покупать", "buy", "увеличение", "прибыль"]
-    negative_keywords = ["падение", "продажа", "sell", "снижение", "убыток"]
-    
-    # Генерируем случайные новости с тональностью
-    news = []
-    for i in range(10):
-        if i % 3 == 0:  # Каждая 3-я новость негативная
-            keyword = negative_keywords[i % len(negative_keywords)]
-            sentiment = -0.7
-            title = f"Анализ: {symbol} ожидает {keyword} на рынке"
-        else:
-            keyword = positive_keywords[i % len(positive_keywords)]
-            sentiment = 0.6
-            title = f"Эксперты прогнозируют {keyword} для {symbol}"
-        
-        news.append({
-            "title": title,
-            "sentiment": sentiment,
-            "timestamp": time.time() - i * 300  # Каждая новость на 5 мин старше предыдущей
-        })
-    
+    """Получает новости для символа (только реальные!)"""
+    # Используем новый модуль для получения новостей
+    news = get_news_for_symbol(symbol)
+    info(f"   ✅ Получено {len(news)} новостей для {symbol}")
+
+    # Логируем источник новостей
+    if news:
+        source = news[0].get("source", "Unknown")
+        info(f"   📰 Источник: {source}")
+
     return news
 
 def main():
     """Основная функция сбора данных"""
     ensure_dirs()
-    
+
     # Инициализируем API-сессию
     init_api_session()
-    
-    for symbol in SYMBOLS:
-        try:
-            # Сбор цен
-            prices = fetch_prices(symbol)
 
-            # Безопасная запись файла с проверкой
+    for symbol in SYMBOLS:
+        # Сбор цен (может бросить исключение)
+        try:
+            prices = fetch_prices(symbol)
             symbol_file = get_filename(symbol)
             prices_file = f"{DATA_DIR}/prices/{symbol_file}.json"
             with open(prices_file, "w") as f:
                 json.dump(prices, f)
-
-            # Сбор новостей
-            news = fetch_news(symbol)
-
-            # Безопасная запись файла с проверкой
-            news_file = f"{DATA_DIR}/news/{symbol_file}.json"
-            with open(news_file, "w") as f:
-                json.dump(news, f)
-
-            info(f"📊 Данные для {symbol} успешно собраны")
         except Exception as e:
-            error(f"❌ Ошибка сбора данных для {symbol}: {str(e)}")
+            error(f"❌ Ошибка получения цен для {symbol}: {str(e)}")
+            continue
+
+        # Сбор новостей (ОБЯЗАТЕЛЬНО получить, иначе падаем!)
+        news = fetch_news(symbol)
+        news_file = f"{DATA_DIR}/news/{symbol_file}.json"
+        with open(news_file, "w") as f:
+            json.dump(news, f)
+
+        info(f"📊 Данные для {symbol} успешно собраны")
 
 if __name__ == "__main__":
     main()

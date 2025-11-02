@@ -8,11 +8,12 @@ __pycache__
 # ========================================
 
 # Trading data and logs
-data/code.log
+data/steps.log
 data/trades.log
 data/cron.log
 data/prices/
 data/news/
+data/positions_cache.json
 
 # Generated charts
 charts/

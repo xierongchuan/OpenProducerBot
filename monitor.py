@@ -21,6 +21,16 @@ def close_position(deal_id):
 
         response.raise_for_status()
 
+        # Удаляем из кэша (импортируем функцию из executor)
+        try:
+            from executor import load_position_cache, save_position_cache
+            cache = load_position_cache()
+            if deal_id in cache:
+                del cache[deal_id]
+                save_position_cache(cache)
+        except Exception as e:
+            warning(f"⚠️ Не удалось удалить {deal_id} из кэша: {e}")
+
         # Логируем закрытие в trades.log
         log_trade(f"✅ Позиция {deal_id} закрыта")
 
@@ -49,20 +59,22 @@ def main():
         # Проверяем время удержания позиции
         try:
             created_time = position.get("created", "")
+            hold_minutes = position.get("hold_minutes", 60)  # По умолчанию 60 минут
+
             if created_time:
                 # Парсим время создания позиции
                 created_date = datetime.fromisoformat(created_time.replace('Z', '+00:00'))
                 now = datetime.now(created_date.tzinfo) if created_date.tzinfo else datetime.now()
                 minutes_held = (now - created_date).total_seconds() / 60
 
-                # Закрываем позицию если она открыта дольше 60 минут
+                # Закрываем позицию если она открыта дольше планируемого времени
                 # (Capital.com должен автоматически закрывать по TP/SL, но страхуемся)
-                if minutes_held > 60:
-                    info(f"⏰ {symbol}: закрываем позицию, открыта {int(minutes_held)} минут")
-                    log_trade(f"⏰ {symbol}: автоматическое закрытие позиции (открыта {int(minutes_held)} минут)")
+                if minutes_held > hold_minutes:
+                    info(f"⏰ {symbol}: закрываем позицию, открыта {int(minutes_held)} мин (планировалось {hold_minutes} мин)")
+                    log_trade(f"⏰ {symbol}: автоматическое закрытие позиции (открыта {int(minutes_held)} мин, планировалось {hold_minutes} мин)")
                     close_position(position["dealId"])
                 else:
-                    info(f"⏳ {symbol}: позиция открыта {int(minutes_held)} мин, ждем до 60 мин")
+                    info(f"⏳ {symbol}: позиция открыта {int(minutes_held)} мин, ждем до {hold_minutes} мин")
             else:
                 warning(f"⚠️ {symbol}: не удалось определить время открытия позиции")
 

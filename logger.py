@@ -1,6 +1,6 @@
 """
 Система логирования для торговой системы.
-Все логи пишутся в data/code.log
+Все логи пишутся в data/steps.log
 Логи сделок пишутся в data/trades.log
 """
 
@@ -13,7 +13,7 @@ LOG_DIR = "data"
 os.makedirs(LOG_DIR, exist_ok=True)
 
 # Настройка логгера для кода
-code_logger = logging.getLogger('code')
+code_logger = logging.getLogger('steps')
 code_logger.setLevel(logging.INFO)
 code_logger.handlers.clear()  # Убираем дубликаты
 code_logger.propagate = False  # Не распространять на родительские логгеры
@@ -24,9 +24,9 @@ formatter = logging.Formatter(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Хэндлер для файла code.log
+# Хэндлер для файла steps.log
 code_file_handler = logging.FileHandler(
-    os.path.join(LOG_DIR, 'code.log'),
+    os.path.join(LOG_DIR, 'steps.log'),
     mode='a',
     encoding='utf-8'
 )

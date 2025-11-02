@@ -25,15 +25,19 @@ def calculate_indicators(prices):
         sma = sum(closes) / len(closes)
 
     # RSI - используем конфигурируемый период
-    if len(closes) < 2:
+    # RSI рассчитывается как скользящее окно по последним rsi_period значениям
+    if len(closes) < rsi_period:
         # Недостаточно данных для RSI
         return round(sma, 5), 50.0
 
-    deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+    # Берем последние rsi_period значений для расчета RSI
+    recent_closes = closes[-rsi_period:]
+
+    deltas = [recent_closes[i] - recent_closes[i-1] for i in range(1, len(recent_closes))]
     gains = [d for d in deltas if d > 0]
     losses = [-d for d in deltas if d < 0]
 
-    # Используем среднее по всем доступным данным
+    # Используем среднее по последним rsi_period-1 значениям
     avg_gain = sum(gains) / len(deltas) if deltas else 0
     avg_loss = sum(losses) / len(deltas) if deltas else 0
 

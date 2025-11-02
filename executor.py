@@ -50,18 +50,25 @@ def get_open_positions():
             # Преобразуем EPIC в символ через единый модуль
             symbol = get_symbol(epic)
 
-            if symbol in SYMBOLS and position.get("position", {}).get("status") == "OPEN":
+            # Capital.com API не возвращает поле "status" в position
+            # Позиции которые вернул /positions - это всегда открытые позиции
+            if symbol in SYMBOLS:
                 pos = position["position"]
                 deal_id = pos["dealId"]
                 current_deal_ids.add(deal_id)
 
-                positions[symbol] = {
+                # ВАЖНО: Поддерживаем СПИСОК позиций по каждому символу
+                # Это позволяет отслеживать несколько позиций по одному активу
+                if symbol not in positions:
+                    positions[symbol] = []
+
+                positions[symbol].append({
                     "type": pos["direction"].lower(),
-                    "entry": pos["openLevel"],
+                    "entry": pos["level"],  # Исправлено: было "openLevel"
                     "dealId": deal_id,
                     "created": pos["createdDate"],
                     "hold_minutes": cache.get(deal_id, 60)  # По умолчанию 60 минут
-                }
+                })
 
         # Примечание: автоочистка кэша отключена из-за несоответствия dealId и dealReference
         # В будущем нужно реализовать получение dealId через /confirms/{dealReference}
@@ -179,14 +186,21 @@ def main(predictions):
         symbol = pred["symbol"]
         current_price = pred["current_price"]
 
-        # Проверяем лимит перед каждой новой позицией
+        # Проверяем лимит и обновляем список позиций перед каждой новой позицией
         current_positions = get_open_positions()
+
+        # Проверяем общий лимит позиций (максимум 5)
         if len(current_positions) >= MAX_POSITIONS:
             warning(f"⚠️ Достигнут лимит позиций ({MAX_POSITIONS}). Пропускаем {symbol}")
             continue
 
+        # Проверяем, есть ли уже открытая позиция по данному символу (максимум 1 на актив)
+        if symbol in current_positions and len(current_positions[symbol]) > 0:
+            info(f"⚠️ У {symbol} уже есть {len(current_positions[symbol])} открытая(ых) позиция(й). Новую позицию не создаем.")
+            continue
+
         # Открываем новые позиции
-        if symbol not in positions and pred["confidence"] > MIN_CONFIDENCE_THRESHOLD:
+        if pred["confidence"] > MIN_CONFIDENCE_THRESHOLD:
             hold_minutes = pred.get("hold_minutes", 60)  # По умолчанию 60 минут
 
             if pred["action"] == "buy":

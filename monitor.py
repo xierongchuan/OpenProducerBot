@@ -54,32 +54,35 @@ def main():
 
     info(f"📊 Отслеживаем позиции: {list(positions.keys())}")
 
-    # Для каждой открытой позиции проверяем условия закрытия
-    for symbol, position in positions.items():
-        # Проверяем время удержания позиции
-        try:
-            created_time = position.get("created", "")
-            hold_minutes = position.get("hold_minutes", 60)  # По умолчанию 60 минут
+    # Для каждого символа и его списка позиций
+    for symbol, position_list in positions.items():
+        # Теперь positions[symbol] это список позиций
+        for i, position in enumerate(position_list):
+            # Проверяем время удержания позиции
+            try:
+                created_time = position.get("created", "")
+                hold_minutes = position.get("hold_minutes", 60)  # По умолчанию 60 минут
+                deal_id = position.get("dealId", "")
 
-            if created_time:
-                # Парсим время создания позиции
-                created_date = datetime.fromisoformat(created_time.replace('Z', '+00:00'))
-                now = datetime.now(created_date.tzinfo) if created_date.tzinfo else datetime.now()
-                minutes_held = (now - created_date).total_seconds() / 60
+                if created_time and deal_id:
+                    # Парсим время создания позиции
+                    created_date = datetime.fromisoformat(created_time.replace('Z', '+00:00'))
+                    now = datetime.now(created_date.tzinfo) if created_date.tzinfo else datetime.now()
+                    minutes_held = (now - created_date).total_seconds() / 60
 
-                # Закрываем позицию если она открыта дольше планируемого времени
-                # (Capital.com должен автоматически закрывать по TP/SL, но страхуемся)
-                if minutes_held > hold_minutes:
-                    info(f"⏰ {symbol}: закрываем позицию, открыта {int(minutes_held)} мин (планировалось {hold_minutes} мин)")
-                    log_trade(f"⏰ {symbol}: автоматическое закрытие позиции (открыта {int(minutes_held)} мин, планировалось {hold_minutes} мин)")
-                    close_position(position["dealId"])
+                    # Закрываем позицию если она открыта дольше планируемого времени
+                    # (Capital.com должен автоматически закрывать по TP/SL, но страхуемся)
+                    if minutes_held > hold_minutes:
+                        info(f"⏰ {symbol} [позиция {i+1}]: закрываем позицию, открыта {int(minutes_held)} мин (планировалось {hold_minutes} мин)")
+                        log_trade(f"⏰ {symbol}: автоматическое закрытие позиции (открыта {int(minutes_held)} мин, планировалось {hold_minutes} мин)")
+                        close_position(deal_id)
+                    else:
+                        info(f"⏳ {symbol} [позиция {i+1}]: позиция открыта {int(minutes_held)} мин, ждем до {hold_minutes} мин")
                 else:
-                    info(f"⏳ {symbol}: позиция открыта {int(minutes_held)} мин, ждем до {hold_minutes} мин")
-            else:
-                warning(f"⚠️ {symbol}: не удалось определить время открытия позиции")
+                    warning(f"⚠️ {symbol} [позиция {i+1}]: не удалось определить время или ID позиции")
 
-        except Exception as e:
-            warning(f"⚠️ {symbol}: ошибка проверки времени: {str(e)}")
+            except Exception as e:
+                warning(f"⚠️ {symbol} [позиция {i+1}]: ошибка проверки времени: {str(e)}")
 
 if __name__ == "__main__":
     main()

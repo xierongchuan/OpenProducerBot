@@ -16,26 +16,37 @@ from logger import info, error
 from symbols import get_filename
 
 def calculate_rsi(closes, period=14):
-    """Рассчитывает RSI индикатор"""
-    if len(closes) < 2:
+    """Рассчитывает RSI индикатор для всех точек как скользящее окно"""
+    if len(closes) < period:
         return [50.0] * len(closes)
 
-    deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-    gains = [d for d in deltas if d > 0]
-    losses = [-d for d in deltas if d < 0]
+    rsi_values = []
 
-    rsi_values = [50.0]  # Первое значение RSI
+    # Для первых period-1 значений используем то что есть
+    for i in range(period - 1):
+        rsi_values.append(50.0)
 
-    for i in range(1, len(closes)):
-        # Используем среднее по доступным данным
-        avg_gain = sum(gains[:min(i, len(gains))]) / min(i, len(deltas) if deltas else 1)
-        avg_loss = sum(losses[:min(i, len(losses))]) / min(i, len(deltas) if deltas else 1)
+    # Рассчитываем RSI для каждой точки начиная с period
+    for i in range(period - 1, len(closes)):
+        # Берем окно из последних period значений
+        window_closes = closes[i - period + 1:i + 1]
 
+        # Рассчитываем дельты
+        deltas = [window_closes[j] - window_closes[j-1] for j in range(1, len(window_closes))]
+
+        # Разделяем на прибыли и убытки
+        gains = [d for d in deltas if d > 0]
+        losses = [-d for d in deltas if d < 0]
+
+        # Средние значения по окну
+        avg_gain = sum(gains) / len(deltas)
+        avg_loss = sum(losses) / len(deltas)
+
+        # Рассчитываем RSI
         if avg_loss == 0:
-            if avg_gain == 0:
-                rsi = 50.0
-            else:
-                rsi = 100.0
+            rsi = 100.0
+        elif avg_gain == 0:
+            rsi = 0.0
         else:
             rs = avg_gain / avg_loss
             rsi = 100 - (100 / (1 + rs))

@@ -136,7 +136,7 @@ def main(predictions):
             continue
 
         # Открываем новые позиции
-        if symbol not in positions and pred["confidence"] > 0.6:
+        if symbol not in positions and pred["confidence"] > MIN_CONFIDENCE_THRESHOLD:
             if pred["action"] == "buy":
                 info(f"📈 {symbol}: сигнал BUY (confidence={pred['confidence']}, причина: {pred['reason']})")
                 create_order(symbol, "BUY", current_price)

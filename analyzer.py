@@ -1,6 +1,6 @@
 import json
 import os
-from config import SYMBOLS, DATA_DIR
+from config import SYMBOLS, DATA_DIR, AI_THRESHOLDS
 from logger import info, error
 from symbols import get_filename
 
@@ -15,13 +15,16 @@ def calculate_indicators(prices):
     except (KeyError, TypeError, ValueError) as e:
         raise ValueError(f"Некорректная структура данных о ценах: {str(e)}")
 
-    # SMA(20)
-    if len(closes) >= 20:
-        sma = sum(closes[-20:]) / 20
+    sma_period = AI_THRESHOLDS["SMA_PERIOD"]
+    rsi_period = AI_THRESHOLDS["RSI_PERIOD"]
+
+    # SMA (конфигурируемый период)
+    if len(closes) >= sma_period:
+        sma = sum(closes[-sma_period:]) / sma_period
     else:
         sma = sum(closes) / len(closes)
 
-    # RSI(14) - используем все доступные данные для расчета
+    # RSI - используем конфигурируемый период
     if len(closes) < 2:
         # Недостаточно данных для RSI
         return round(sma, 5), 50.0
@@ -72,27 +75,27 @@ def analyze_symbol(symbol):
     # Текущая цена
     current_price = float(prices[-1]["closePrice"]["bid"])
     
-    # Формируем промпт
+    # Формируем промпт с конфигурируемыми порогами
     prompt = f"""
     Ты — профессиональный трейдер с 10-летним опытом. Проанализируй {symbol} строго по этим правилам:
 
     ### ДАННЫЕ (последние 50 свечей 5-минутного таймфрейма):
     - Текущая цена: {current_price:.5f}
-    - SMA(20): {sma:.5f} | Тренд: {'восходящий' if current_price > sma else 'нисходящий'}
-    - RSI(14): {rsi:.2f} | Состояние: {'перекупленность' if rsi > 70 else 'перепроданность' if rsi < 30 else 'нейтрально'}
+    - SMA({AI_THRESHOLDS['SMA_PERIOD']}): {sma:.5f} | Тренд: {'восходящий' if current_price > sma else 'нисходящий'}
+    - RSI({AI_THRESHOLDS['RSI_PERIOD']}): {rsi:.2f} | Состояние: {'перекупленность' if rsi > AI_THRESHOLDS['RSI_OVERBOUGHT'] else 'перепроданность' if rsi < AI_THRESHOLDS['RSI_OVERSOLD'] else 'нейтрально'}
     - Новости: {positive_count} позитивных, {negative_count} негативных (ключевые: {', '.join(keywords)})
 
     ### ПРАВИЛА АНАЛИЗА:
-    1. Если RSI > 70 И новостной фон негативный → сильный сигнал SELL
-    2. Если RSI < 30 И новостной фон позитивный → сильный сигнал BUY
-    3. Если цена выше SMA(20) И 3+ позитивных новости → умеренный сигнал BUY
-    4. Если цена ниже SMA(20) И 3+ негативных новости → умеренный сигнал SELL
+    1. Если RSI > {AI_THRESHOLDS['RSI_OVERBOUGHT']} И новостной фон негативный → сильный сигнал SELL
+    2. Если RSI < {AI_THRESHOLDS['RSI_OVERSOLD']} И новостной фон позитивный → сильный сигнал BUY
+    3. Если цена выше SMA({AI_THRESHOLDS['SMA_PERIOD']}) И {AI_THRESHOLDS['MIN_POSITIVE_NEWS']}+ позитивных новости → умеренный сигнал BUY
+    4. Если цена ниже SMA({AI_THRESHOLDS['SMA_PERIOD']}) И {AI_THRESHOLDS['MIN_NEGATIVE_NEWS']}+ негативных новости → умеренный сигнал SELL
     5. При конфликте индикаторов → приоритет у новостей
 
     ### ТРЕБОВАНИЯ К ОТВЕТУ:
     - Действие ТОЛЬКО: buy/sell/close/hold
-    - Confidence: 0.0-1.0 (0.8+ = сильный сигнал)
-    - Время удержания: 15/30/60 минут
+    - Confidence: 0.0-1.0 ({AI_THRESHOLDS['STRONG_SIGNAL_CONFIDENCE']}+ = сильный сигнал)
+    - Время удержания: {', '.join(map(str, AI_THRESHOLDS['HOLD_TIMES']))} минут
     - Обязательно укажи причину из правил выше
 
     Верни ТОЛЬКО валидный JSON без пояснений:

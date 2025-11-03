@@ -227,7 +227,7 @@ def main(predictions):
             continue
 
         # Открываем новые позиции
-        if pred["confidence"] > MIN_CONFIDENCE_THRESHOLD:
+        if pred["confidence"] >= MIN_CONFIDENCE_THRESHOLD:
             hold_minutes = pred.get("hold_minutes", DEFAULT_HOLD_TIME_MINUTES)  # По умолчанию из конфигурации
 
             if pred["action"] == "buy":

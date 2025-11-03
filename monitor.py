@@ -57,10 +57,32 @@ def close_position(deal_id, working_order_id=None):
 def main():
     """Основная функция мониторинга"""
     info("👀 Запуск мониторинга открытых позиций...")
-    positions = executor.get_open_positions()
+    all_positions = executor.get_open_positions()
+
+    if not all_positions:
+        info("📭 Нет открытых позиций для мониторинга")
+        return
+
+    # Фильтруем позиции - отслеживаем только те, что создал бот (есть в кэше)
+    cache = executor.load_position_cache()
+    positions = {}
+
+    for sym, position_list in all_positions.items():
+        filtered_positions = []
+        for position in position_list:
+            deal_id = position.get("dealId", "")
+            working_order_id = position.get("workingOrderId", "")
+
+            # Проверяем, есть ли эта позиция в кэше бота
+            if deal_id in cache or (working_order_id and working_order_id in cache):
+                filtered_positions.append(position)
+
+        # Если нашлись позиции этого символа в кэше, добавляем их
+        if filtered_positions:
+            positions[sym] = filtered_positions
 
     if not positions:
-        info("📭 Нет открытых позиций для мониторинга")
+        info("📭 Нет позиций бота для мониторинга (возможно, все закрыты вручную)")
         return
 
     info(f"📊 Отслеживаем позиции: {list(positions.keys())}")
@@ -74,9 +96,8 @@ def main():
                 created_time = position.get("created", "")
                 deal_id = position.get("dealId", "")
 
-                # Загружаем кэш и получаем hold_minutes из кэша для этой сделки
+                # Получаем hold_minutes из кэша для этой сделки
                 # РЕШЕНИЕ: Используем workingOrderId (стабильный) вместо dealId (меняется)
-                cache = executor.load_position_cache()
                 working_order_id = position.get("workingOrderId", "")
 
                 # Ищем в кэше по workingOrderId (приоритет)

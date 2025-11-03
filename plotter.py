@@ -22,9 +22,9 @@ def calculate_rsi(closes, period=14):
 
     rsi_values = []
 
-    # Для первых period-1 значений используем то что есть
+    # Для первых period-1 значений используем None чтобы не показывать на графике
     for i in range(period - 1):
-        rsi_values.append(50.0)
+        rsi_values.append(None)
 
     # Рассчитываем RSI для каждой точки начиная с period
     for i in range(period - 1, len(closes)):
@@ -148,11 +148,12 @@ def plot_symbol(symbol):
     ax1.legend(fontsize=10, loc='upper left')
     ax1.grid(alpha=0.2)
 
-    # Добавляем текущую цену
+    # Добавляем текущую цену (перемещаем в правый верхний угол)
     current_price = closes[-1]
-    ax1.text(0.02, 0.98, f"Текущая цена: {current_price:.5f}",
+    ax1.text(0.98, 0.98, f"Текущая цена: {current_price:.5f}",
              transform=ax1.transAxes, fontsize=12,
-             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='#d62728', alpha=0.1))
+             verticalalignment='top', horizontalalignment='right',
+             bbox=dict(boxstyle='round', facecolor='#d62728', alpha=0.1))
 
     # Нижний график - RSI
     ax2.plot(dates, rsi, label=f"RSI({rsi_period})", color="#2ca02c", linewidth=2)

@@ -9,10 +9,7 @@
     ],
     "bingx": [
       "BTCUSDT",
-      "ETHUSDT",
-      "SOLUSDT",
-      "XRPUSDT",
-      "BNBUSDT"
+      "ETHUSDT"
     ]
   },
   "TRADE_AMOUNT_USDT": 50,

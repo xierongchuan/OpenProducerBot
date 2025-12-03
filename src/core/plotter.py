@@ -261,6 +261,10 @@ def plot_symbol(symbol):
     ax3.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     fig.autofmt_xdate()
 
+    # Убираем отступы по краям (слева и справа)
+    if len(dates) > 0:
+        ax1.set_xlim(dates[0], dates[-1])
+
     # Сохраняем с высоким разрешением (перезаписываем файл)
     filename = f"{CHARTS_DIR}/{get_filename(symbol)}.png"
     plt.savefig(filename, dpi=200, bbox_inches='tight')

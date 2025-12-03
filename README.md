@@ -36,37 +36,41 @@
 
 ```
 OpenProducer/
-- **`exchange_client.py`**: Абстрактный базовый класс для всех клиентов бирж.
-- **`exchange_factory.py`**: Фабрика для создания экземпляра клиента биржи на основе конфигурации.
-- **`capital_client.py`**: Реализация клиента для Capital.com.
-- **`bingx_client.py`**: Реализация клиента для BingX.
-- **`collector.py`**: Сбор данных (цены, новости) через унифицированный интерфейс.
-- **`analyzer.py`**: Расчет технических индикаторов (RSI, MACD, Bollinger Bands, SMA/EMA).
-- **`predict.py`**: Генерация торговых сигналов с помощью DeepSeek AI.
-- **`executor.py`**: Исполнение ордеров (открытие позиций, TP/SL) через унифицированный интерфейс.
-- **`monitor.py`**: Мониторинг открытых позиций и управление рисками.
-- **`plotter.py`**: Визуализация данных и результатов анализа.
-- **`main.py`**: Оркестратор всего процесса.
-- **`config.py`**: Централизованная конфигурация.
-- **`logger.py`**: Система логирования.
-- **`symbols.py`**: Управление списком активов и маппинг символов.
-- **`news_api.py`**: Клиент для получения новостей.
+- **`run.py`**: Точка входа в приложение.
+- **`src/`**: Основной исходный код.
+  - **`core/`**: Ядро системы.
+    - **`collector.py`**: Сбор данных (цены, новости).
+    - **`analyzer.py`**: Расчет технических индикаторов.
+    - **`predict.py`**: Генерация сигналов с DeepSeek AI.
+    - **`executor.py`**: Исполнение ордеров.
+    - **`monitor.py`**: Мониторинг позиций.
+    - **`plotter.py`**: Визуализация.
+  - **`exchanges/`**: Клиенты бирж.
+    - **`exchange_client.py`**: Базовый класс.
+    - **`exchange_factory.py`**: Фабрика клиентов.
+    - **`capital_client.py`**: Клиент Capital.com.
+    - **`bingx_client.py`**: Клиент BingX.
+  - **`utils/`**: Утилиты.
+    - **`logger.py`**: Логирование.
+    - **`config.py`**: Конфигурация.
+    - **`news_api.py`**: Клиент новостей.
+    - **`symbols.py`**: Управление символами.
 ```
 
 ### Пайплайн обработки данных
 
 ```
-1. Сбор данных (collector.py) → Цены → data/prices/, Новости → data/news/
+1. Сбор данных (src/core/collector.py) → Цены → data/prices/, Новости → data/news/
        ↓
-2. Анализ (analyzer.py) → SMA, RSI → Промпты для AI
+2. Анализ (src/core/analyzer.py) → SMA, RSI → Промпты для AI
        ↓
-3. AI-прогноз (predict.py) → DeepSeek API → Торговые сигналы
+3. AI-прогноз (src/core/predict.py) → DeepSeek API → Торговые сигналы
        ↓
-4. Исполнение (executor.py) → Capital.com API → Позиции с TP/SL
+4. Исполнение (src/core/executor.py) → Capital.com API → Позиции с TP/SL
        ↓
-5. Мониторинг (monitor.py) → Отслеживание → Автозакрытие (60 мин)
+5. Мониторинг (src/core/monitor.py) → Отслеживание → Автозакрытие (60 мин)
        ↓
-6. Визуализация (plotter.py) → Графики → charts/
+6. Визуализация (src/core/plotter.py) → Графики → charts/
 ```
 
 ### Управление конфигурацией
@@ -159,10 +163,10 @@ echo $CAP_API_USERNAME
 echo $DEEPSEEK_API_KEY
 
 # Проверьте синтаксис файлов
-python3 -m py_compile *.py
+python3 -m py_compile run.py src/**/*.py
 
 # Проверьте импорты
-python3 -c "import logger, config, utils; print('✅ Все OK!')"
+python3 -c "from src.utils import logger, config; print('✅ Все OK!')"
 ```
 
 ---
@@ -172,7 +176,7 @@ python3 -c "import logger, config, utils; print('✅ Все OK!')"
 ### Полный цикл торговли (разовый запуск)
 
 ```bash
-python3 main.py
+python3 run.py
 ```
 
 **Что произойдет:**
@@ -189,32 +193,32 @@ python3 main.py
 
 ```bash
 # 1. Сбор данных
-python3 collector.py
+python3 -m src.core.collector
 
 # 2. Технический анализ
-python3 analyzer.py
+python3 -m src.core.analyzer
 
 # 3. AI-прогноз
-python3 predict.py
+python3 -m src.core.predict
 
 # 4. Исполнение ордеров (требует настроенных API)
-python3 executor.py
+python3 -m src.core.executor
 
 # 5. Мониторинг
-python3 monitor.py
+python3 -m src.core.monitor
 
 # 6. Генерация графиков
-python3 plotter.py
+python3 -m src.core.plotter
 ```
 
 ### Команды для разработки
 
 ```bash
 # Проверка синтаксиса всех файлов
-python3 -m py_compile *.py
+python3 -m py_compile run.py src/**/*.py
 
 # Тест импортов модулей
-python3 -c "import logger, config, utils; print('OK')"
+python3 -c "from src.utils import logger, config; print('OK')"
 
 # Мониторинг логов в реальном времени
 tail -f data/steps.log      # Все события системы
@@ -237,7 +241,7 @@ grep ERROR data/steps.log
 #!/bin/bash
 cd /path/to/OpenProducer
 source .env
-python3 main.py >> data/cron.log 2>&1
+python3 run.py >> data/cron.log 2>&1
 echo "$(date): Trading bot cycle completed" >> data/cron.log
 
 # Сделайте скрипт исполняемым
@@ -261,7 +265,7 @@ After=network.target
 Type=simple
 User=your_username
 WorkingDirectory=/path/to/OpenProducer
-ExecStart=/usr/bin/python3 /path/to/main.py
+ExecStart=/usr/bin/python3 /path/to/run.py
 Restart=always
 RestartSec=300
 
@@ -285,7 +289,7 @@ sudo systemctl status trading-bot.service
 ```bash
 # Создаем сессию
 screen -S trading-bot
-python3 main.py
+python3 run.py
 # Отключаемся: Ctrl+A, затем D
 # Подключиться: screen -r trading-bot
 ```
@@ -300,7 +304,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
-CMD ["python3", "main.py"]
+CMD ["python3", "run.py"]
 ```
 
 **Соберите и запустите:**
@@ -357,7 +361,7 @@ wc -l data/steps.log data/trades.log
 
 ## ⚙️ Настройка параметров
 
-### Файл config.py
+### Файл src/config.py
 
 ```python
 # Торгуемые активы (максимум 5)
@@ -378,7 +382,7 @@ POSITION_TIMEOUT_MINUTES = 60
 ### Добавление новых активов
 
 ```python
-# В config.py добавьте в SYMBOLS:
+# В src/config.py добавьте в SYMBOLS:
 SYMBOLS = [
     "EUR/USD",      # Forex
     "BTC/USD",      # Криптовалюта
@@ -418,7 +422,7 @@ sudo systemctl restart trading-bot.service
 
 # Через screen
 screen -X -S trading-bot quit
-screen -S trading-bot python3 main.py
+screen -S trading-bot python3 run.py
 
 # Через Docker
 docker restart trading-bot
@@ -432,17 +436,16 @@ docker restart trading-bot
 
 ```bash
 # Проверка синтаксиса всех Python файлов
-python3 -m py_compile main.py config.py logger.py
-python3 -m py_compile collector.py analyzer.py predict.py
-python3 -m py_compile executor.py monitor.py plotter.py utils.py
+# Проверка синтаксиса всех Python файлов
+python3 -m py_compile run.py src/**/*.py
 
 # Тест импортов
-python3 -c "import logger, config, utils; print('✅ OK')"
+python3 -c "from src.utils import logger, config; print('✅ OK')"
 
 # Тест отдельных модулей
-python3 collector.py  # Тест сбора данных
-python3 analyzer.py   # Тест анализа
-python3 executor.py   # Тест управления позициями
+python3 -m src.core.collector  # Тест сбора данных
+python3 -m src.core.analyzer   # Тест анализа
+python3 -m src.core.executor   # Тест управления позициями
 ```
 
 ### API Integration Details
@@ -542,7 +545,12 @@ OpenProducer/
 │       └── BTC/USD.json
 ├── charts/                   # Сгенерированные графики
 │   └── EUR/USD_20251102_2015.png
-├── *.py                      # Python модули (10 total)
+├── run.py                    # Точка входа
+├── src/                      # Исходный код
+│   ├── core/                 # Основная логика
+│   ├── exchanges/            # Клиенты бирж
+│   └── utils/                # Утилиты
+├── scripts/                  # Скрипты (bash)
 └── *.md                      # Документация
 ```
 
@@ -664,7 +672,7 @@ export DEEPSEEK_API_KEY="your_key"
 export MODE="demo"
 
 # 3. Запустить
-python3 main.py
+python3 run.py
 
 # 4. Настроить автозапуск (опционально)
 ./setup_cron.sh

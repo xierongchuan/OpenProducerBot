@@ -94,8 +94,12 @@ def parse_response(response):
             data["hold_minutes"] = DEFAULT_HOLD_TIME_MINUTES
             
         # Добавляем причину по умолчанию
-        if "reason" not in data:
-            data["reason"] = "Автоматический сигнал"
+        # Добавляем процент закрытия (для close_partial)
+        if "percentage" not in data:
+            data["percentage"] = 1.0
+        else:
+            # Нормализация percentage
+            data["percentage"] = max(0.0, min(1.0, float(data["percentage"])))
             
         return data
     except Exception as e:
@@ -176,6 +180,7 @@ def main(analyses):
             **analysis,
             "action": prediction["action"],
             "confidence": prediction["confidence"],
+            "percentage": prediction.get("percentage", 1.0),
             "hold_minutes": prediction["hold_minutes"],
             "reason": prediction["reason"]
         })

@@ -145,8 +145,40 @@ def main(predictions):
             continue
 
         # Проверяем, есть ли уже открытая позиция по данному символу (максимум 1 на актив)
-        if symbol in positions and len(positions[symbol]) > 0:
-            info(f"⚠️ У {symbol} уже есть {len(positions[symbol])} открытая(ых) позиция(й). Новую позицию не создаем.")
+        has_position = symbol in positions and len(positions[symbol]) > 0
+        
+        if has_position:
+            # Если позиция есть, проверяем сигналы на выход
+            if pred["action"] in ["close", "close_partial"] and pred["confidence"] >= MIN_CONFIDENCE_THRESHOLD:
+                current_pos = positions[symbol][0] # Берем первую (обычно единственную)
+                deal_id = current_pos["dealId"]
+                percentage = pred.get("percentage", 1.0)
+                
+                if pred["action"] == "close":
+                    percentage = 1.0
+                    
+                info(f"📉 {symbol}: сигнал {pred['action'].upper()} ({percentage*100}%) (confidence={pred['confidence']}, причина: {pred['reason']})")
+                
+                # Используем client напрямую или через monitor (лучше напрямую здесь)
+                if client.close_position(symbol, deal_id, percentage):
+                    info(f"✅ {symbol}: позиция {deal_id} закрыта (частично: {percentage})")
+                    # Обновляем кэш (удаляем если полное закрытие)
+                    if percentage == 1.0:
+                         # Импорт внутри функции чтобы избежать циклических зависимостей если они есть, 
+                         # но здесь мы в executor, так что используем свои функции
+                         cache = load_position_cache()
+                         if str(deal_id) in cache:
+                             del cache[str(deal_id)]
+                         save_position_cache(cache)
+                    
+                    # Обновляем локальный список
+                    positions = get_open_positions()
+                    total_positions = sum(len(p) for p in positions.values())
+                else:
+                    error(f"❌ {symbol}: не удалось закрыть позицию {deal_id}")
+            else:
+                info(f"⚠️ У {symbol} уже есть открытая позиция. Новых входов не делаем. Сигнал: {pred['action']}")
+            
             continue
 
         # Открываем новые позиции

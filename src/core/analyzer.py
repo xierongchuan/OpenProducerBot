@@ -144,12 +144,13 @@ def analyze_symbol(symbol, position=None):
     ### ТВОЯ ЗАДАЧА:
     1.  Учти наличие открытой позиции.
     2.  Если позиции нет, определи сценарий (А или Б) и проверь условия входа.
-    3.  Прими решение: buy, sell, close, или hold.
+    3.  Прими решение: buy, sell, close, close_partial, или hold.
 
     ### ФОРМАТ ОТВЕТА (JSON ONLY):
     {{
-        "action": "buy" | "sell" | "close" | "hold",
+        "action": "buy" | "sell" | "close" | "close_partial" | "hold",
         "confidence": 0.0-1.0 (0.8+ для сильных сигналов),
+        "percentage": 0.1-1.0 (Только для close_partial, например 0.5 для 50%),
         "hold_minutes": {AI_THRESHOLDS['HOLD_TIMES'][-1]},
         "reason": "Краткое объяснение: Позиция, Сценарий (А/Б), Тренд, RSI, Новости."
     }}

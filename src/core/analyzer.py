@@ -70,8 +70,11 @@ def analyze_symbol(symbol):
 
     # Формируем сырые новостные данные для анализа ИИ
     news_text = ""
-    for item in news:
-        news_text += f"\n- [{item['timestamp']}] {item['title']}\n  {item['description']}\n"
+    if news:
+        for item in news:
+            news_text += f"\n- [{item['timestamp']}] {item['title']}\n  {item['description']}\n"
+    else:
+        news_text = "Новости отключены или недоступны. Анализируй только технические индикаторы."
 
     # Формируем промпт с сырыми новостными данными
     prompt = f"""

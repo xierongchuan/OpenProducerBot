@@ -14,8 +14,9 @@ echo -e "${GREEN}  Настройка cron для OpenProducer Bot  ${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
-BOT_DIR=$(pwd)
-SCRIPT_PATH="$BOT_DIR/run_trading_bot.sh"
+# Определяем директорию скриптов
+SCRIPTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_PATH="$SCRIPTS_DIR/run_trading_bot.sh"
 
 if [ ! -f "$SCRIPT_PATH" ]; then
     echo -e "${RED}❌ Ошибка: Скрипт не найден!${NC}"

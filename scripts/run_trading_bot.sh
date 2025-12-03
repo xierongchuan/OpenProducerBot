@@ -23,7 +23,8 @@ log_warning() {
 }
 
 # Переходим в директорию со скриптом
-cd "$(dirname "$0")"
+# Переходим в корневую директорию проекта (на уровень выше скрипта)
+cd "$(dirname "$0")/.."
 
 # Загружаем переменные из .env файла если он существует
 if [ -f .env ]; then
@@ -37,27 +38,7 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Проверка наличия переменных окружения
-EXCHANGE=${EXCHANGE:-capital}
-
-if [ -z "$DEEPSEEK_API_KEY" ]; then
-    log_error "DEEPSEEK_API_KEY не настроен!"
-    exit 1
-fi
-
-if [ "$EXCHANGE" == "capital" ]; then
-    if [ -z "$CAP_API_USERNAME" ] || [ -z "$CAP_API_PASSWORD" ] || [ -z "$CAP_API_KEY" ]; then
-        log_error "Capital.com credentials missing!"
-        log_warning "Required: CAP_API_USERNAME, CAP_API_PASSWORD, CAP_API_KEY"
-        exit 1
-    fi
-elif [ "$EXCHANGE" == "bingx" ]; then
-    if [ -z "$BINGX_API_KEY" ] || [ -z "$BINGX_SECRET_KEY" ]; then
-        log_error "BingX credentials missing!"
-        log_warning "Required: BINGX_API_KEY, BINGX_SECRET_KEY"
-        exit 1
-    fi
-fi
+# Проверка наличия переменных окружения - пропущена, так как все берется из .env
 
 # Создаем директории если их нет
 mkdir -p data/prices data/news charts
@@ -67,14 +48,21 @@ log_message "Запуск торгового бота OpenProducer..."
 log_message "Биржа: $EXCHANGE"
 log_message "Режим: $MODE"
 
-# Запускаем бота с использованием виртуального окружения
-if ./venv/bin/python3 run.py; then
-    log_message "✅ Торговый бот успешно завершил работу"
-else
-    log_error "❌ Торговый бот завершился с ошибкой"
-    log_warning "Проверьте логи: data/steps.log"
-    exit 1
-fi
+# Бесконечный цикл запуска
+while true; do
+    log_message "🚀 Запуск цикла торгового бота..."
+    
+    # Запускаем бота с использованием виртуального окружения
+    if ./venv/bin/python3 run.py; then
+        log_message "✅ Торговый цикл успешно завершен"
+    else
+        log_error "❌ Торговый цикл завершился с ошибкой"
+        log_warning "Проверьте логи: data/steps.log"
+    fi
+    
+    log_message "⏳ Ожидание 60 секунд перед следующим запуском..."
+    sleep 60
+done
 
 # Логируем завершение
 echo "" >> data/cron.log 2>/dev/null || true

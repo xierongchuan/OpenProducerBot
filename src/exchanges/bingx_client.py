@@ -139,9 +139,22 @@ class BingXClient(ExchangeClient):
         # или эндпоинт может отличаться. Рыночные данные одинаковы для демо и реала.
         market_url = "https://open-api.bingx.com/openApi/swap/v3/quote/klines"
         
+        # Map Capital.com interval constants to BingX format
+        interval_map = {
+            "MINUTE_1": "1m",
+            "MINUTE_5": "5m",
+            "MINUTE_15": "15m",
+            "MINUTE_30": "30m",
+            "HOUR_1": "1h",
+            "HOUR_4": "4h",
+            "DAY_1": "1d"
+        }
+        
+        bingx_interval = interval_map.get(interval, interval)
+        
         params = {
             "symbol": formatted_symbol,
-            "interval": interval,
+            "interval": bingx_interval,
             "limit": limit
         }
         

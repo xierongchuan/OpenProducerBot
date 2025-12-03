@@ -82,6 +82,8 @@ ALPHAVANTAGE_KEY = os.getenv("ALPHAVANTAGE_KEY", "")
 FINNHUB_KEY = os.getenv("FINNHUB_KEY", "")
 
 # Настройки новостей
+ENABLE_NEWS = os.getenv("ENABLE_NEWS", "true").lower() == "true"
+
 NEWS_SETTINGS = {
     "use_real_news": True,               # Использовать реальные новости (нужны API ключи)
     "provider": "newsapi",          # newsapi, alphavantage, finnhub
@@ -115,3 +117,5 @@ if EXCHANGE == "capital":
     print(f"🌐 Capital.com API endpoint: {API_BASE} ({'Demo' if MODE == 'demo' else 'Real'})")
 else:
     print(f"🌐 BingX API endpoint: {BINGX_API_URL} ({'Demo (VST)' if MODE == 'demo' else 'Real'})")
+
+print(f"📰 Новости: {'ВКЛЮЧЕНЫ' if ENABLE_NEWS else 'ОТКЛЮЧЕНЫ'}")

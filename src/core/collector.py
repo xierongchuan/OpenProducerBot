@@ -1,7 +1,7 @@
 import os
 import json
 import time
-from src.config import SYMBOLS, DATA_DIR, NEWS_SETTINGS
+from src.config import SYMBOLS, DATA_DIR, NEWS_SETTINGS, ENABLE_NEWS
 from src.utils.logger import info, error
 from src.utils.symbols import get_filename
 from src.utils.news_api import get_news_for_symbol
@@ -83,8 +83,12 @@ def main():
             error(f"❌ Ошибка получения цен для {symbol}: {str(e)}")
             continue
 
-        # Сбор новостей (ОБЯЗАТЕЛЬНО получить, иначе падаем!)
-        news = fetch_news(symbol)
+        # Сбор новостей
+        if ENABLE_NEWS:
+            news = fetch_news(symbol)
+        else:
+            news = []
+            
         news_file = f"{DATA_DIR}/news/{symbol_file}.json"
         with open(news_file, "w") as f:
             json.dump(news, f)

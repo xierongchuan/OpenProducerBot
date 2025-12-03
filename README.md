@@ -129,6 +129,9 @@ export EXCHANGE="bingx"
 # BingX API (для торговли на BingX)
 export BINGX_API_KEY="ваш_api_ключ_bingx"
 export BINGX_SECRET_KEY="ваш_secret_key_bingx"
+
+# Обработка новостей (true/false)
+export ENABLE_NEWS="true"
 ```
 
 **📋 Как получить CAP_API_KEY:**

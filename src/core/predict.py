@@ -162,67 +162,87 @@ def should_call_ai(analysis):
     info(f"⚡ {symbol}: Активный рынок (RSI={rsi}) -> Вызываем ИИ")
     return True
 
-def main(analyses):
-    """Основная функция прогнозирования"""
-    predictions = []
+def process_analysis(analysis):
+    """Обрабатывает один анализ: проверяет условия, делает запрос к ИИ (с ретраями) и возвращает прогноз"""
     from src.config import DEFAULT_HOLD_TIME_MINUTES
 
-    for analysis in analyses:
-        # Технический пре-фильтр
-        if not should_call_ai(analysis):
-            predictions.append({
-                **analysis,
-                "action": "hold",
-                "confidence": 0.0,
-                "hold_minutes": DEFAULT_HOLD_TIME_MINUTES,
-                "reason": f"Auto-HOLD: Нейтральный рынок (RSI={analysis['rsi']})"
-            })
-            continue
-
-        info(f"🧠 Генерация прогноза для {analysis['symbol']}...")
-        # Retry logic for API/Parsing errors
-        max_retries = 1
-        prediction = None
-
-        for attempt in range(max_retries + 1):
-            response = get_prediction(analysis["prompt"])
-
-            # Логируем очищенный ответ от DeepSeek (без markdown)
-            if isinstance(response, str):
-                import re
-                cleaned = re.sub(r'```json\s*', '', response)
-                cleaned = re.sub(r'```', '', cleaned)
-                info(f"📨 Ответ DeepSeek (Попытка {attempt+1}/{max_retries+1}): {cleaned[:500]}...") # Truncate log
-            else:
-                info(f"📨 Ответ DeepSeek (Попытка {attempt+1}/{max_retries+1}): (dict) {response}")
-
-            prediction = parse_response(response)
-
-            # Check if parsing failed (it returns a default dict with specific reason)
-            if prediction["reason"] == "Ошибка парсинга ответа DeepSeek" or prediction["reason"].startswith("Ошибка API"):
-                if attempt < max_retries:
-                    warning(f"⚠️ Ошибка парсинга/API. Повторная попытка через 2 сек...")
-                    time.sleep(2)
-                    continue
-                else:
-                    error(f"❌ Не удалось получить корректный ответ после {max_retries+1} попыток.")
-            else:
-                # Success
-                break
-
-        predictions.append({
+    # Технический пре-фильтр
+    if not should_call_ai(analysis):
+        return {
             **analysis,
-            "action": prediction["action"],
-            "confidence": prediction["confidence"],
-            "percentage": prediction.get("percentage", 1.0),
-            "stop_loss": prediction.get("stop_loss"),
-            "take_profit": prediction.get("take_profit"),
-            "hold_minutes": prediction["hold_minutes"],
-            "reason": prediction["reason"]
-        })
+            "action": "hold",
+            "confidence": 0.0,
+            "hold_minutes": DEFAULT_HOLD_TIME_MINUTES,
+            "reason": f"Auto-HOLD: Нейтральный рынок (RSI={analysis['rsi']})"
+        }
 
-        # Задержка между запросами к API
-        time.sleep(1)
+    info(f"🧠 Генерация прогноза для {analysis['symbol']}...")
+    # Retry logic for API/Parsing errors
+    max_retries = 1
+    prediction = None
+
+    for attempt in range(max_retries + 1):
+        response = get_prediction(analysis["prompt"])
+
+        # Логируем очищенный ответ от DeepSeek (без markdown)
+        if isinstance(response, str):
+            import re
+            cleaned = re.sub(r'```json\s*', '', response)
+            cleaned = re.sub(r'```', '', cleaned)
+            info(f"📨 Ответ DeepSeek ({analysis['symbol']}, Попытка {attempt+1}/{max_retries+1}): {cleaned}") # Truncate log
+        else:
+            info(f"📨 Ответ DeepSeek ({analysis['symbol']}, Попытка {attempt+1}/{max_retries+1}): (dict) {response}")
+
+        prediction = parse_response(response)
+
+        # Check if parsing failed (it returns a default dict with specific reason)
+        if prediction["reason"] == "Ошибка парсинга ответа DeepSeek" or prediction["reason"].startswith("Ошибка API"):
+            if attempt < max_retries:
+                warning(f"⚠️ {analysis['symbol']}: Ошибка парсинга/API. Повторная попытка через 2 сек...")
+                time.sleep(2)
+                continue
+            else:
+                error(f"❌ {analysis['symbol']}: Не удалось получить корректный ответ после {max_retries+1} попыток.")
+        else:
+            # Success
+            break
+
+    return {
+        **analysis,
+        "action": prediction["action"],
+        "confidence": prediction["confidence"],
+        "percentage": prediction.get("percentage", 1.0),
+        "stop_loss": prediction.get("stop_loss"),
+        "take_profit": prediction.get("take_profit"),
+        "hold_minutes": prediction["hold_minutes"],
+        "reason": prediction["reason"]
+    }
+
+def main(analyses):
+    """Основная функция прогнозирования (Multi-threaded)"""
+    import concurrent.futures
+
+    predictions = []
+
+    # Use ThreadPoolExecutor to run AI requests in parallel
+    # Max workers = number of analyses or a reasonable limit (e.g., 10)
+    max_workers = min(len(analyses), 10)
+    if max_workers == 0:
+        return []
+
+    info(f"🚀 Запуск параллельного анализа для {len(analyses)} активов (потоков: {max_workers})...")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        future_to_symbol = {executor.submit(process_analysis, analysis): analysis['symbol'] for analysis in analyses}
+
+        for future in concurrent.futures.as_completed(future_to_symbol):
+            symbol = future_to_symbol[future]
+            try:
+                result = future.result()
+                predictions.append(result)
+            except Exception as exc:
+                error(f"❌ Ошибка при обработке {symbol}: {exc}")
 
     return predictions
 

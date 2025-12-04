@@ -1,693 +1,281 @@
-# 🤖 OpenProducer - Автоматизированная торговая система
+# 🤖 OpenProducer - AI-Powered Algorithmic Trading System
 
-## ⚠️ ВАЖНОЕ ПРЕДУПРЕЖДЕНИЕ
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
+![Status](https://img.shields.io/badge/status-active-success)
 
-**ВНИМАНИЕ:** Торговля на финансовых рынках связана с высокими рисками и может привести к потере всех ваших средств.
+**OpenProducer** - это профессиональная автоматизированная торговая система, разработанная для торговли криптовалютными фьючерсами на бирже **BingX** (Standard & VST Futures).
 
-Данная система предназначена **ИСКЛЮЧИТЕЛЬНО для образовательных целей**. Автоматическая торговля может привести к значительным убыткам.
-
-**НИКОГДА НЕ ИСПОЛЬЗУЙТЕ СИСТЕМУ С РЕАЛЬНЫМИ ДЕНЬГАМИ БЕЗ ПОЛНОГО ПОНИМАНИЯ РИСКОВ!**
+Система использует передовые модели искусственного интеллекта (**DeepSeek AI**) для принятия торговых решений, комбинируя классический технический анализ с анализом рыночной структуры, психологии толпы и управлением рисками.
 
 ---
 
-## 📋 Описание системы
+## 📑 Содержание
 
-**OpenProducer** - это полнофункциональная автоматизированная торговая система, которая интегрируется с **BingX API** (VST/Standard Futures) и Capital.com API для торговых операций и использует DeepSeek API для AI-анализа рынка. Система работает в демо-режиме по умолчанию и поддерживает торговлю на нескольких активах (forex, криптовалюты, акции, товары).
+1. [⚠️ Важное предупреждение](#-важное-предупреждение)
+2. [🚀 Ключевые возможности](#-ключевые-возможности)
+3. [🧠 Торговая стратегия и AI](#-торговая-стратегия-и-ai)
+4. [⚙️ Установка и Настройка](#-установка-и-настройка)
+5. [🔧 Конфигурация (bot_config.json)](#-конфигурация-bot_configjson)
+6. [🏗️ Архитектура системы](#-архитектура-системы)
+7. [📊 Мониторинг и Логи](#-мониторинг-и-логи)
+8. [❓ Устранение неполадок](#-устранение-неполадок)
 
-### Основные возможности
+---
 
-- 📊 Сбор рыночных данных с Capital.com API и BingX API
-- 🧠 AI-анализ через DeepSeek API с **оптимизацией запросов** (Smart Skip)
-- 📈 Технические индикаторы (SMA, RSI)
-- ⚡ Автоматическое исполнение торговых сигналов
-- 🛡️ Управление рисками (Take Profit / Stop Loss)
-- 📉 **Частичное закрытие позиций** (AI может закрыть 50% позиции)
-- 👁️ Отслеживание открытых позиций
-- 📉 Генерация графиков и отчетов
-- 📝 Двухуровневое логирование всех операций
-- ✅ **Демо-режим** по умолчанию (безопасность)
-- ✅ **Мультиактивность**: Forex, криптовалюты, акции
-- ✅ **Автоматический мониторинг**: Закрытие позиций через 60 минут
+## ⚠️ Важное предупреждение
+
+> [!CAUTION]
+> **Торговля фьючерсами связана с экстремально высоким риском потери капитала.**
+>
+> Данное программное обеспечение предоставляется **"КАК ЕСТЬ"** в образовательных целях. Автор не несет ответственности за любые финансовые потери, понесенные в результате использования данного бота.
+>
+> 1. **ВСЕГДА** начинайте с демо-счета (BingX VST Futures).
+> 2. **НИКОГДА** не торгуйте на деньги, которые не можете позволить себе потерять.
+> 3. **НЕ ОСТАВЛЯЙТЕ** бота без присмотра на реальном счете на длительное время.
+
+---
+
+## 🚀 Ключевые возможности
+
+### � Интеллектуальный анализ
+*   **DeepSeek Integration**: Использует мощную языковую модель для анализа рыночного контекста, а не просто индикаторов.
+*   **Психология рынка**: Оценивает, кто контролирует рынок (быки/медведи), ищет признаки "ловушек" и панических продаж.
+*   **Smart Skip**: Пропускает очевидно нейтральные рынки (флэт), экономя API токены и снижая шум.
+
+### ⚡ Высокая производительность
+*   **Multi-threading**: Параллельный анализ десятков пар одновременно.
+*   **Multi-processing**: Генерация графиков в отдельных процессах, не блокируя торговое ядро.
+
+### 🛡️ Продвинутый Риск-менеджмент
+*   **Dynamic SL/TP**: ИИ автоматически рассчитывает уровни Stop Loss и Take Profit на основе локальных уровней поддержки/сопротивления.
+*   **Risk/Reward Protection**: Бот **автоматически отклоняет** любые сделки, где потенциальная прибыль меньше риска (R/R < 1.5).
+*   **Auto-Close**: Принудительное закрытие позиций по таймеру (по умолчанию 60 мин) для предотвращения "зависания" в сделках.
+
+### 📈 Гибкие режимы торговли
+*   **Conservative Mode**: Вход только при сильных сигналах перекупленности/перепроданности (RSI < 30 / > 70).
+*   **Aggressive Mode**: Умный вход на откатах по тренду (Trend Pullbacks), даже если индикаторы в нейтральной зоне.
+
+---
+
+## 🧠 Торговая стратегия и AI
+
+Бот работает по следующему алгоритму принятия решений:
+
+### 1. Сбор данных
+Система загружает последние 50 свечей (5m таймфрейм) для каждого актива из списка.
+
+### 2. Технический пре-фильтр
+Перед вызовом дорогостоящего ИИ, бот проверяет базовые условия:
+*   **RSI Filter**: Если RSI между 40 и 60 (нейтральная зона) И нет явного тренда -> **SKIP** (Auto-HOLD).
+*   **Trend Filter**: Если включен `AGGRESSIVE_MODE`, бот проверяет положение цены относительно SMA.
+
+### 3. AI Анализ (DeepSeek)
+Если пре-фильтр пройден, формируется сложный промпт для ИИ, включающий:
+*   Цену, SMA, RSI.
+*   Уровни поддержки и сопротивления (вычисляются алгоритмически).
+*   Анализ объемов (Volume Profile).
+*   Текущую позицию (если есть).
+
+**Задача ИИ**:
+1.  Определить структуру рынка.
+2.  Найти точку входа.
+3.  Рассчитать SL и TP.
+4.  Вернуть JSON с решением (`buy`, `sell`, `hold`, `close`).
+
+### 4. Валидация сигнала
+Полученный от ИИ сигнал проходит жесткую проверку:
+*   Есть ли SL и TP?
+*   `Reward = |Price - TP|`
+*   `Risk = |Price - SL|`
+*   Если `Reward / Risk < 1.5` -> **СИГНАЛ ОТКЛОНЯЕТСЯ**.
+
+---
+
+## ⚙️ Установка и Настройка
+
+### Предварительные требования
+*   **OS**: Linux (рекомендуется), macOS, Windows (через WSL).
+*   **Python**: Версия 3.12 или выше.
+*   **Аккаунт BingX**: Для торговли (Standard Futures).
+
+### Пошаговая установка
+
+1.  **Клонируйте репозиторий:**
+    ```bash
+    git clone https://github.com/xierongchuan/OpenProducer.git
+    cd OpenProducer
+    ```
+
+2.  **Создайте виртуальное окружение (рекомендуется):**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+3.  **Установите зависимости:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4.  **Настройте переменные окружения:**
+    Создайте файл `.env` в корне проекта:
+    ```bash
+    touch .env
+    ```
+    Добавьте в него ваши ключи:
+    ```ini
+    # BingX API (Standard Futures)
+    BINGX_API_KEY="ваш_публичный_ключ"
+    BINGX_SECRET_KEY="ваш_секретный_ключ"
+
+    # DeepSeek API (для мозга бота)
+    DEEPSEEK_API_KEY="ваш_ключ_deepseek"
+
+    # Режим работы
+    # "demo" = VST Futures (Виртуальные деньги BingX)
+    # "real" = USDT Standard Futures (Реальные деньги)
+    MODE="demo"
+    ```
+
+5.  **Запустите бота:**
+    ```bash
+    python3 run.py
+    ```
+
+---
+
+## 🔧 Конфигурация (`bot_config.json`)
+
+Файл `bot_config.json` позволяет тонко настроить поведение бота без изменения кода.
+
+```json
+{
+  "EXCHANGE_SYMBOLS": {
+    "bingx": ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BNB-USDT", "XRP-USDT"]
+  },
+  "ENABLE_PARALLEL_PROCESSING": true,
+  "AGGRESSIVE_MODE": false,
+  "ENABLE_ADVANCED_ANALYSIS": true,
+  "MIN_RISK_REWARD_RATIO": 1.5,
+  "POSITION_SIZE_PERCENT": 5.0,
+  "LEVERAGE": 5,
+  "DEFAULT_HOLD_TIME_MINUTES": 60,
+  "AI_THRESHOLDS": {
+    "RSI_OVERSOLD": 30,
+    "RSI_OVERBOUGHT": 70,
+    "SMA_PERIOD": 20,
+    "RSI_PERIOD": 14
+  }
+}
+```
+
+### Подробное описание параметров
+
+| Параметр | Тип | Описание | Рекомендация |
+| :--- | :--- | :--- | :--- |
+| `EXCHANGE_SYMBOLS` | Dict | Список пар для торговли. Должны соответствовать тикерам BingX Standard Futures. | Топ-10 ликвидных монет |
+| `ENABLE_PARALLEL_PROCESSING` | Bool | **True**: Анализирует все пары одновременно (быстро). **False**: По очереди (медленно, для отладки). | `true` |
+| `AGGRESSIVE_MODE` | Bool | **True**: Разрешает вход на откатах (RSI 40-60). **False**: Только RSI <30/>70. | `false` для начала |
+| `ENABLE_ADVANCED_ANALYSIS` | Bool | Включает анализ уровней и психологии в промпте ИИ. | `true` |
+| `MIN_RISK_REWARD_RATIO` | Float | Минимальное соотношение Прибыль/Риск. Сделки ниже этого значения игнорируются. | `1.5` - `2.0` |
+| `POSITION_SIZE_PERCENT` | Float | Какой % от баланса использовать в одной сделке (с учетом плеча). | `1.0` - `5.0` |
+| `LEVERAGE` | Int | Кредитное плечо. | `2` - `5` (Не ставьте выше 10!) |
+| `DEFAULT_HOLD_TIME_MINUTES` | Int | Через сколько минут бот принудительно закроет позицию, если не сработал SL/TP. | `60` - `120` |
 
 ---
 
 ## 🏗️ Архитектура системы
 
-### Основные компоненты
+Проект построен по модульной архитектуре для легкости поддержки и расширения.
 
-```
-OpenProducer/
-- **`run.py`**: Точка входа в приложение.
-- **`src/`**: Основной исходный код.
-  - **`core/`**: Ядро системы.
-    - **`collector.py`**: Сбор данных (цены, новости).
-    - **`analyzer.py`**: Расчет технических индикаторов.
-    - **`predict.py`**: Генерация сигналов с DeepSeek AI.
-    - **`executor.py`**: Исполнение ордеров.
-    - **`monitor.py`**: Мониторинг позиций.
-    - **`plotter.py`**: Визуализация.
-  - **`exchanges/`**: Клиенты бирж.
-    - **`exchange_client.py`**: Базовый класс.
-    - **`exchange_factory.py`**: Фабрика клиентов.
-    - **`capital_client.py`**: Клиент Capital.com.
-    - **`bingx_client.py`**: Клиент BingX.
-  - **`utils/`**: Утилиты.
-    - **`logger.py`**: Логирование.
-    - **`config.py`**: Конфигурация.
-    - **`news_api.py`**: Клиент новостей.
-    - **`symbols.py`**: Управление символами.
-```
+```mermaid
+graph TD
+    Main[run.py] --> Collector
+    Main --> Analyzer
+    Main --> Predictor
+    Main --> Executor
+    Main --> Plotter
 
-### Пайплайн обработки данных
+    subgraph Core Logic
+        Collector[src/core/collector.py] -- Данные --> Analyzer[src/core/analyzer.py]
+        Analyzer -- Промпт --> Predictor[src/core/predict.py]
+        Predictor -- Сигнал --> Executor[src/core/executor.py]
+    end
 
-```
-1. Сбор данных (src/core/collector.py) → Цены → data/prices/, Новости → data/news/
-       ↓
-2. Анализ (src/core/analyzer.py) → SMA, RSI → Промпты для AI
-       ↓
-3. AI-прогноз (src/core/predict.py) → DeepSeek API (Smart Skip: пропуск нейтральных рынков) → Торговые сигналы
-       ↓
-4. Исполнение (src/core/executor.py) → Capital.com API → Позиции с TP/SL
-       ↓
-5. Мониторинг (src/core/monitor.py) → Отслеживание → Автозакрытие (60 мин)
-       ↓
-6. Визуализация (src/core/plotter.py) → Графики → charts/
+    subgraph External APIs
+        Collector <--> BingX_API
+        Predictor <--> DeepSeek_API
+        Executor <--> BingX_API
+    end
+
+    subgraph Parallel Processing
+        Predictor -- ThreadPool --> AI_Workers
+        Plotter[src/core/plotter.py] -- ProcessPool --> Chart_Workers
+    end
 ```
 
-### Управление конфигурацией
-
-- `MODE` - управляет демо vs реальной торговлей (по умолчанию "demo")
-- Переменные окружения: `CAP_API_USERNAME`, `CAP_API_PASSWORD`, `DEEPSEEK_API_KEY`
-- Торговые параметры: размер позиции (0.1 лота), TP (1.5%), SL (2.0%)
-- Поддерживаемые символы: EUR/USD, BTC/USD (по умолчанию, можно добавить AAPL, GOLD, OIL до 5 макс)
-- Максимум одновременных позиций: 5
-- Таймаут позиции: 60 минут (автозакрытие)
+*   **src/core/predict.py**: Мозг системы. Содержит логику общения с ИИ, ретраи (повторные попытки) и валидацию сигналов.
+*   **src/exchanges/bingx_client.py**: Обертка над API BingX. Реализует подпись запросов (HMAC SHA256) и унифицированный интерфейс.
+*   **src/utils/logger.py**: Централизованная система логирования.
 
 ---
 
-## 🚀 Установка и настройка
+## � Мониторинг и Логи
 
-### Требования
-- Python 3.12+
-- pip
+Бот пишет подробные логи в папку `data/`.
 
-### Установка зависимостей
+### 1. Технический лог (`data/steps.log`)
+Здесь видно всё, что делает бот: запросы к API, ответы ИИ, ошибки.
+```
+2025-12-04 22:00:01 | INFO | 🚀 Запуск параллельного анализа...
+2025-12-04 22:00:02 | INFO | 📨 Ответ DeepSeek (BTC-USDT): {"action": "buy", ...}
+```
 
+### 2. Торговый лог (`data/trades.log`)
+Здесь только важная информация о сделках.
+```
+2025-12-04 22:00:05 | 🟢 OPEN LONG BTC-USDT | Price: 95000 | SL: 94000 | TP: 97000
+2025-12-04 23:00:00 | 🔴 CLOSE BTC-USDT | PnL: +50 USDT (+2.5%)
+```
+
+### Как следить в реальном времени (Linux/Mac):
 ```bash
-# Основные зависимости
-pip install pandas matplotlib python-dateutil requests
-
-# Или через requirements.txt
-pip install -r requirements.txt
-```
-
-**Основные зависимости:**
-- `requests` - HTTP клиент для API
-- `pandas` - Анализ данных
-- `matplotlib` - Построение графиков
-- `python-dateutil` - Работа с датами
-
-### Настройка переменных окружения
-
-**Создайте файл `.env` или экспортируйте переменные:**
-
-```bash
-# Выбор биржи (capital или bingx)
-export EXCHANGE="bingx"
-
-# BingX API (для торговли на BingX)
-# Для VST (Demo) используйте ключи от VST аккаунта (если отличаются)
-export BINGX_API_KEY="ваш_api_ключ_bingx"
-export BINGX_SECRET_KEY="ваш_secret_key_bingx"
-
-# Capital.com API (Legacy / Forex)
-export CAP_API_USERNAME="ваш_email_демо_аккаунта"
-export CAP_API_PASSWORD="ваш_пароль_демо_аккаунта"
-export CAP_API_KEY="ваш_api_ключ_из_capital_com"
-
-# DeepSeek API (для AI-анализа рынка)
-export DEEPSEEK_API_KEY="ваш_ключ_deepseek"
-
-# Режим работы (ВАЖНО: всегда demo для тестирования!)
-export MODE="demo"
-
-# Обработка новостей (true/false)
-export ENABLE_NEWS="true"
-```
-
-**📋 Как получить CAP_API_KEY:**
-
-1. Войдите в демо-аккаунт Capital.com
-2. Перейдите в **Settings > API Integrations**
-3. Нажмите **Generate API key**
-4. Введите имя для ключа, установите пароль и срок действия
-5. Введите 2FA код (если включен)
-6. **Сохраните API ключ** (он показывается только один раз!)
-7. Установите переменную окружения:
-   ```bash
-   export CAP_API_KEY="ваш_api_ключ_здесь"
-   ```
-
-⚠️ **ВАЖНО:** API ключ Capital.com отображается только один раз при создании!
-
-
-**Загрузка из .env файла:**
-
-```bash
-# Сделайте .env файл исполняемым
-chmod +x .env
-source .env
-```
-
-### Проверка настройки
-
-```bash
-# Проверьте переменные окружения
-echo $CAP_API_USERNAME
-echo $DEEPSEEK_API_KEY
-
-# Проверьте синтаксис файлов
-python3 -m py_compile run.py src/**/*.py
-
-# Проверьте импорты
-python3 -c "from src.utils import logger, config; print('✅ Все OK!')"
-```
-
----
-
-## 🎯 Запуск системы
-
-### Полный цикл торговли (разовый запуск)
-
-```bash
-python3 run.py
-```
-
-**Что произойдет:**
-1. ✅ Проверка предварительных условий (API ключи, доступность)
-2. 📊 Сбор данных о ценах (50 последних свечей 5-минутного таймфрейма)
-3. 📰 Генерация синтетических новостей с тональностью
-4. 🔍 Расчет технических индикаторов (SMA, RSI)
-5. 🧠 Отправка данных в DeepSeek для анализа и получения сигналов
-6. ⚡ Исполнение торговых сигналов (если confidence > 0.6)
-7. 👁️ Мониторинг открытых позиций
-8. 📈 Генерация графиков с индикаторами
-
-### Пошаговый запуск (для тестирования)
-
-```bash
-# 1. Сбор данных
-python3 -m src.core.collector
-
-# 2. Технический анализ
-python3 -m src.core.analyzer
-
-# 3. AI-прогноз
-python3 -m src.core.predict
-
-# 4. Исполнение ордеров (требует настроенных API)
-python3 -m src.core.executor
-
-# 5. Мониторинг
-python3 -m src.core.monitor
-
-# 6. Генерация графиков
-python3 -m src.core.plotter
-```
-
-### Команды для разработки
-
-```bash
-# Проверка синтаксиса всех файлов
-python3 -m py_compile run.py src/**/*.py
-
-# Тест импортов модулей
-python3 -c "from src.utils import logger, config; print('OK')"
-
-# Мониторинг логов в реальном времени
-tail -f data/steps.log      # Все события системы
-tail -f data/trades.log    # Только торговые операции
-
-# Поиск ошибок
-grep ERROR data/steps.log
-```
-
----
-
-## ⏰ Настройка постоянного мониторинга
-
-### 🎯 Вариант 1: Cron (рекомендуется)
-
-**Автоматический перезапуск через cron (Linux/Mac):**
-
-```bash
-# Создайте скрипт автозапуска run_trading_bot.sh
-#!/bin/bash
-cd /path/to/OpenProducer
-source .env
-python3 run.py >> data/cron.log 2>&1
-echo "$(date): Trading bot cycle completed" >> data/cron.log
-
-# Сделайте скрипт исполняемым
-chmod +x run_trading_bot.sh
-
-# Добавьте в crontab (запуск каждые 10 минут)
-crontab -e
-# Добавьте строку: */10 * * * * /path/to/run_trading_bot.sh
-```
-
-### 🎯 Вариант 2: Systemd сервис (Linux)
-
-**Создайте файл сервиса `/etc/systemd/system/trading-bot.service`:**
-
-```ini
-[Unit]
-Description=OpenProducer Trading Bot
-After=network.target
-
-[Service]
-Type=simple
-User=your_username
-WorkingDirectory=/path/to/OpenProducer
-ExecStart=/usr/bin/python3 /path/to/run.py
-Restart=always
-RestartSec=300
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**Активируйте сервис:**
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable trading-bot.service
-sudo systemctl start trading-bot.service
-sudo systemctl status trading-bot.service
-```
-
-### 🎯 Вариант 3: Screen/Tmux
-
-**Использование screen:**
-
-```bash
-# Создаем сессию
-screen -S trading-bot
-python3 run.py
-# Отключаемся: Ctrl+A, затем D
-# Подключиться: screen -r trading-bot
-```
-
-### 🎯 Вариант 4: Docker (опционально)
-
-**Создайте Dockerfile:**
-
-```dockerfile
-FROM python:3.12-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-CMD ["python3", "run.py"]
-```
-
-**Соберите и запустите:**
-
-```bash
-docker build -t openproducer-bot .
-docker run -d --name trading-bot --env-file .env \
-  -v /path/to/data:/app/data \
-  openproducer-bot
-docker logs -f trading-bot
-```
-
----
-
-## 📊 Мониторинг и логи
-
-### Файлы логов
-
-**data/steps.log** - Все события системы
-```
-2025-11-02 20:11:27 | INFO | code | 📊 ШАГ 1: Сбор данных
-2025-11-02 20:11:28 | ERROR | code | ❌ Ошибка: Connection timeout
-```
-
-**data/trades.log** - Только торговые операции
-```
-2025-11-02 20:11:29 | 📌 EUR/USD: открыт ордер BUY по 1.0850
-2025-11-02 20:11:35 | ✅ Позиция abc123 закрыта
-```
-
-### Просмотр логов в реальном времени
-
-```bash
-# Все события системы
+# В одном окне терминала (технический лог)
 tail -f data/steps.log
 
-# Только торговые операции
+# В другом окне (торговый лог)
 tail -f data/trades.log
-
-# Поиск ошибок
-grep ERROR data/steps.log
-
-# Поиск торговых операций
-grep "📌\|✅\|❌\|⏰" data/trades.log
-
-# Статистика за день
-grep "2025-11-02" data/trades.log | wc -l
-
-# Количество строк в логах
-wc -l data/steps.log data/trades.log
 ```
 
 ---
 
-## ⚙️ Настройка параметров
+## ❓ Устранение неполадок
 
-### Файл bot_config.json
+### Бот не открывает сделки
+1.  **Проверьте `MIN_RISK_REWARD_RATIO`**: Возможно, ИИ дает сигналы, но они отсеиваются из-за плохого соотношения риска и прибыли. Поищите в логах `[AUTO-FIX: Low R/R]`.
+2.  **Проверьте режим**: Если `AGGRESSIVE_MODE: false`, бот ждет очень сильных движений (RSI < 30). Рынок может быть спокойным.
+3.  **Проверьте баланс**: На VST счете должны быть средства.
 
-Все настройки торговых параметров теперь вынесены в файл `bot_config.json` в корне проекта.
+### Ошибка `Signature Validation Failed` (BingX)
+*   Проверьте правильность `BINGX_API_KEY` и `BINGX_SECRET_KEY` в `.env`.
+*   Убедитесь, что системное время на сервере синхронизировано.
 
-```json
-{
-    "EXCHANGE_SYMBOLS": {
-        "capital": ["BTC/USD", "EUR/USD"],
-        "bingx": ["BTC-USDT", "ETH-USDT"]
-    },
-    "POSITION_SIZE": 0.1,
-    "TAKE_PROFIT_PERCENT": 1.5,
-    "STOP_LOSS_PERCENT": 1.5,
-    "MIN_CONFIDENCE_THRESHOLD": 0.7,
-    "DEFAULT_HOLD_TIME_MINUTES": 60
-}
-```
-
-Вы можете изменять эти параметры без редактирования кода.
-
-### Добавление новых активов
-
-```json
-"EXCHANGE_SYMBOLS": {
-    "capital": ["BTC/USD", "EUR/USD", "AAPL", "GOLD", "BRENTOIL"],
-    "bingx": ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
-}
-```
-# Поддерживаются максимум 5 активов для каждой биржи!
-```
+### Ошибка `DeepSeek API Error`
+*   Закончились токены на балансе DeepSeek.
+*   API недоступен (проверьте статус DeepSeek).
 
 ---
 
-## 🔧 Управление системой
+## 🤝 Содействие (Contributing)
 
-### Остановка бота
-
-```bash
-# Если запущен через cron - просто удалите из crontab
-crontab -e
-# Удалите строку с запуском бота
-
-# Если запущен через systemd
-sudo systemctl stop trading-bot.service
-
-# Если запущен через screen
-screen -X -S trading-bot quit
-
-# Если запущен через Docker
-docker stop trading-bot
-```
-
-### Перезапуск бота
-
-```bash
-# Через systemd
-sudo systemctl restart trading-bot.service
-
-# Через screen
-screen -X -S trading-bot quit
-screen -S trading-bot python3 run.py
-
-# Через Docker
-docker restart trading-bot
-```
+Мы приветствуем Pull Requests!
+1.  Форкните проект.
+2.  Создайте ветку (`git checkout -b feature/AmazingFeature`).
+3.  Закоммитьте изменения (`git commit -m 'Add some AmazingFeature'`).
+4.  Запушьте ветку (`git push origin feature/AmazingFeature`).
+5.  Откройте Pull Request.
 
 ---
 
-## 🔧 Тестирование и отладка
-
-### Тестирование компонентов
-
-```bash
-# Проверка синтаксиса всех Python файлов
-# Проверка синтаксиса всех Python файлов
-python3 -m py_compile run.py src/**/*.py
-
-# Тест импортов
-python3 -c "from src.utils import logger, config; print('✅ OK')"
-
-# Тест отдельных модулей
-python3 -m src.core.collector  # Тест сбора данных
-python3 -m src.core.analyzer   # Тест анализа
-python3 -m src.core.executor   # Тест управления позициями
-```
-
-### API Integration Details
-
-**Capital.com API**
-- Demo Base URL: `https://demo-api-capital.backend-capital.com/api/v1/`
-- Real Base URL: `https://api-capital.backend-capital.com/api/v1/`
-- Authentication: CST + Security Token (cached for 10 minutes)
-- Endpoints: /session, /prices/{epic}, /positions, /positions/otc
-- Epic mapping: EUR/USD → CS.D.EURUSD.TODAY.IP, BTC/USD → Crypto.BTCUSD
-
-**BingX API**
-- Demo (VST) Base URL: `https://open-api-vst.bingx.com`
-- Real (Standard Futures) Base URL: `https://open-api.bingx.com`
-- Authentication: HMAC SHA256 signing (Manual query construction)
-- Endpoints: /openApi/swap/v2/user/balance, /openApi/swap/v3/quote/klines, /openApi/swap/v2/trade/order
-- Symbol mapping: BTC/USD → BTC-USDT
-- **Features**: Partial Close supported (via `percentage` param)
-
-**DeepSeek API**
-- Endpoint: `https://api.deepseek.com/v1/chat/completions`
-- Model: deepseek-chat
-- Temperature: 0.3 (for consistent predictions)
-
----
-
-## 🔍 Troubleshooting
-
-### Часто задаваемые вопросы
-
-**Q: Можно ли использовать реальные деньги?**
-**A:** НЕТ! Система предназначена только для демо-тестирования. Использование реальных денег крайне рискованно!
-
-**Q: Сколько можно заработать?**
-**A:** Система создана для образовательных целей. НЕ ожидайте прибыли. Результаты прошлых сделок не гарантируют будущих результатов.
-
-**Q: Что делать если бот не запускается?**
-**A:**
-1. Проверьте переменные окружения: `echo $CAP_API_KEY`
-2. Проверьте логи: `tail -f data/steps.log`
-3. Убедитесь что аккаунт Capital.com активен
-4. Проверьте статус DeepSeek API
-
-### Частые проблемы
-
-**1. Ошибка авторизации Capital.com**
-
-*HTTP 400 ошибка:*
-```
-❌ HTTP 400 ошибка при авторизации
-```
-**Решение:**
-- Проверьте CAP_API_KEY (ОБЯЗАТЕЛЬНО!)
-- Получите API ключ в Settings > API Integrations на Capital.com
-- Убедитесь, что API ключ активен
-
-*HTTP 401 ошибка:*
-```
-❌ Ошибка авторизации: Invalid credentials
-```
-**Решение:**
-- Проверьте CAP_API_USERNAME и CAP_API_PASSWORD
-- В демо-режиме система использует https://demo-api-capital.backend-capital.com/api/v1/
-
-**2. Ошибка DeepSeek API**
-```
-❌ Ошибка DeepSeek API: 401 Unauthorized
-```
-**Решение:** Проверьте DEEPSEEK_API_KEY
-
-**3. Сессия устарела**
-```
-🔄 Сессия устарела, перезапускаем инициализацию
-```
-**Это нормально** - система автоматически перезапустит сессию
-
-### Основные проблемы
-
-1. **401 Unauthorized**: Система автовосстановления переинициализирует сессию
-2. **Пустые данные о ценах**: Проверьте статус Capital.com API и epic mappings
-3. **Ошибки DeepSeek**: Проверьте API ключ и доступность модели
-4. **Ошибки импорта**: Убедитесь что установлены все зависимости (pandas, matplotlib, requests)
-
----
-
-## 📁 Структура файлов
-
-```
-OpenProducer/
-├── data/
-│   ├── steps.log             # Логи выполнения кода
-│   ├── trades.log            # Логи торговых операций
-│   ├── prices/               # Сырые данные о ценах
-│   │   ├── EURUSD.json
-│   │   └── BTCUSD.json
-│   └── news/                 # Данные новостей
-│       ├── EURUSD.json
-│       └── BTCUSD.json
-├── charts/                   # Сгенерированные графики
-│   └── EURUSD.png
-├── run.py                    # Точка входа
-├── src/                      # Исходный код
-│   ├── core/                 # Основная логика
-│   ├── exchanges/            # Клиенты бирж
-│   └── utils/                # Утилиты
-├── tests/                    # Интеграционные тесты
-│   ├── test_bingx_actions.py
-│   └── test_partial_close.py
-├── scripts/                  # Скрипты (bash)
-└── *.md                      # Документация
-```
-
----
-
-## 📋 Отчеты и документация
-
-В проекте созданы подробные отчеты:
-
-### Основная документация
-
-1. **README_RU.md** - Полное руководство на русском языке
-2. **CLAUDE.md** - Техническая документация для разработчиков
-3. **COMMANDS.md** - Быстрые команды и шпаргалка
-
-### Скрипты
-
-1. **run_trading_bot.sh** - Автозапуск бота
-2. **setup_cron.sh** - Настройка cron
-3. **monitor_logs.sh** - Мониторинг логов
-
----
-
-## 🔒 Безопасность
-
-### Рекомендации
-
-1. **Никогда не коммитьте API ключи** в git
-2. **Используйте переменные окружения**, а не .env в продакшене
-3. **Всегда тестируйте в demo режиме** перед реальной торговлей
-4. **Мониторьте логи** для выявления подозрительной активности
-
-### Ограничения
-
-- Максимум 5 одновременных позиций
-- Только лимитные ордера с TP/SL
-- Автоматическое закрытие позиций через 60 минут
-
----
-
-## 📈 Мониторинг производительности
-
-### Ключевые метрики
-
-- Количество открытых позиций
-- Прибыльность сделок
-- Время удержания позиций
-- Частота сигналов
-
-### Автоматические действия
-
-- Закрытие по Take Profit/Stop Loss
-- Закрытие позиций старше 60 минут
-- Логирование всех операций
-
----
-
-## 🎓 Образовательная ценность
-
-Проект демонстрирует:
-
-1. **Архитектуру ПО** - модульная структура
-2. **API интеграцию** - работа с REST API
-3. **Логирование** - централизованная система
-4. **Обработку ошибок** - безопасные операции
-5. **AI интеграцию** - машинное обучение в трейдинге
-6. **Риск-менеджмент** - автоматическое управление
-
----
-
-## ⚠️ ВАЖНЫЕ ЗАМЕЧАНИЯ
-
-### 🔒 Безопасность
-- Никогда не коммитьте API ключи в git
-- Используйте переменные окружения
-- Регулярно меняйте пароли
-
-### 📊 Торговые риски
-- ВСЕГДА тестируйте в demo режиме
-- Никогда не используйте заемные средства
-- Инвестируйте только те деньги, которые можете потерять
-- Помните: прошлые результаты не гарантируют будущих
-
-### 📞 Поддержка
-- Изучите документацию: README.md, CLAUDE.md
-- Проверьте логи при проблемах
-- Изучите отчеты об ошибках
-- Настройте уведомления о критических ошибках
-
----
-
-## 🚨 Дисклеймер
-
-**ВНИМАНИЕ:** Торговля на финансовых рынках связана с высокими рисками.  
-Данная система предназначена для образовательных целей.  
-Автоматическая торговля может привести к значительным убыткам.  
-Используйте только собственные средства и на свой риск.
-
-**Никогда не торгуйте деньгами, которые не можете позволить себе потерять!**
-
----
-
-**Версия:** 1.0  
-**Автор:** Claude Code  
-**Дата:** 2025-11-02
-
----
-
-## 🎯 Быстрый старт
-
-```bash
-# 1. Установить зависимости
-pip install pandas matplotlib python-dateutil requests
-
-# 2. Настроить переменные
-export CAP_API_USERNAME="your_email"
-export CAP_API_PASSWORD="your_password"
-export DEEPSEEK_API_KEY="your_key"
-export MODE="demo"
-
-# 3. Запустить
-python3 run.py
-
-# 4. Настроить автозапуск (опционально)
-./setup_cron.sh
-
-# 5. Мониторить логи
-./monitor_logs.sh
-```
-
-**Удачи в изучении! 🚀**
-
-**НЕ РИСКУЙТЕ СВОИМИ ДЕНЬГАМИ! ИСПОЛЬЗУЙТЕ ТОЛЬКО DEMO-РЕЖИМ! 🚀**
+**Happy Trading! 🚀**

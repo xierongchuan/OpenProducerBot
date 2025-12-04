@@ -58,7 +58,7 @@ def get_open_positions():
         error(f"❌ Ошибка получения позиций: {str(e)}")
         return {}
 
-def create_order(symbol, direction, price, hold_minutes=DEFAULT_HOLD_TIME_MINUTES, ai_sl=None, ai_tp=None):
+def create_order(symbol, direction, price, hold_minutes=DEFAULT_HOLD_TIME_MINUTES, ai_sl=None, ai_tp=None, reason="Unknown", confidence=0.0):
     """Создает ордер с TP/SL через ExchangeClient"""
     client = get_exchange_client()
 
@@ -170,7 +170,8 @@ def create_order(symbol, direction, price, hold_minutes=DEFAULT_HOLD_TIME_MINUTE
             save_position_cache(cache)
 
             log_trade(f"📌 {symbol}: открыт ордер {direction} по {price:.5f} "
-                      f"(TP={tp_price}, SL={sl_price}, ID={order_id}, hold={hold_minutes}мин)")
+                      f"(Qty={quantity}, TP={tp_price}, SL={sl_price}, ID={order_id}, hold={hold_minutes}мин) "
+                      f"| Conf: {confidence:.2f} | Reason: {reason}")
             info(f"✅ {symbol}: открыт ордер {direction} по {price:.5f}")
             return str(order_id)
 
@@ -238,6 +239,8 @@ def main(predictions):
                 # Используем client напрямую или через monitor (лучше напрямую здесь)
                 if client.close_position(symbol, deal_id, percentage):
                     info(f"✅ {symbol}: позиция {deal_id} закрыта (частично: {percentage})")
+                    log_trade(f"✅ {symbol}: позиция {deal_id} закрыта (частично: {percentage*100}%) | Причина: {pred['reason']}")
+
                     # Обновляем кэш (удаляем если полное закрытие)
                     if percentage == 1.0:
                          # Импорт внутри функции чтобы избежать циклических зависимостей если они есть,
@@ -252,6 +255,7 @@ def main(predictions):
                     total_positions = sum(len(p) for p in positions.values())
                 else:
                     error(f"❌ {symbol}: не удалось закрыть позицию {deal_id}")
+                    log_trade(f"❌ {symbol}: ошибка закрытия позиции {deal_id}", level='ERROR')
             else:
                 info(f"⚠️ У {symbol} уже есть открытая позиция. Новых входов не делаем. Сигнал: {pred['action']}")
 
@@ -284,7 +288,7 @@ def main(predictions):
 
             if pred["action"] == "buy":
                 info(f"📈 {symbol}: сигнал BUY (confidence={pred['confidence']}, причина: {pred['reason']})")
-                result = create_order(symbol, "BUY", current_price, hold_minutes, ai_sl=pred.get("stop_loss"), ai_tp=pred.get("take_profit"))
+                result = create_order(symbol, "BUY", current_price, hold_minutes, ai_sl=pred.get("stop_loss"), ai_tp=pred.get("take_profit"), reason=pred['reason'], confidence=pred['confidence'])
                 # Обновляем локальный список позиций и кэш после успешного создания
                 if result:
                     positions = get_open_positions()
@@ -292,7 +296,7 @@ def main(predictions):
                     total_positions = sum(len(p) for p in positions.values())
             elif pred["action"] == "sell":
                 info(f"📉 {symbol}: сигнал SELL (confidence={pred['confidence']}, причина: {pred['reason']})")
-                result = create_order(symbol, "SELL", current_price, hold_minutes, ai_sl=pred.get("stop_loss"), ai_tp=pred.get("take_profit"))
+                result = create_order(symbol, "SELL", current_price, hold_minutes, ai_sl=pred.get("stop_loss"), ai_tp=pred.get("take_profit"), reason=pred['reason'], confidence=pred['confidence'])
                 # Обновляем локальный список позиций и кэш после успешного создания
                 if result:
                     positions = get_open_positions()

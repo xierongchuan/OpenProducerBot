@@ -17,7 +17,7 @@ def get_prediction(prompt):
         "max_tokens": 256,
         "temperature": 0.3
     }
-    
+
     try:
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
@@ -35,7 +35,7 @@ def get_prediction(prompt):
     except Exception as e:
         error(f"❌ Ошибка DeepSeek API: {str(e)}")
         # Возвращаем dict вместо строки JSON
-        from config import DEFAULT_HOLD_TIME_MINUTES
+        from src.config import DEFAULT_HOLD_TIME_MINUTES
         return {
             "action": "hold",
             "confidence": 0.0,
@@ -78,33 +78,36 @@ def parse_response(response):
 
             json_str = cleaned[start:end]
             data = json.loads(json_str)
-        
+
         # Валидация данных
         if "action" not in data:
             raise ValueError("Нет поля action")
         if "confidence" not in data:
             data["confidence"] = 0.5
-            
+
         # Нормализация confidence
         data["confidence"] = max(0.0, min(1.0, float(data["confidence"])))
-        
+
         # Добавляем время удержания по умолчанию
         if "hold_minutes" not in data:
-            from config import DEFAULT_HOLD_TIME_MINUTES
+            from src.config import DEFAULT_HOLD_TIME_MINUTES
             data["hold_minutes"] = DEFAULT_HOLD_TIME_MINUTES
-            
+
         # Добавляем причину по умолчанию
         # Добавляем процент закрытия (для close_partial)
         if "percentage" not in data:
             data["percentage"] = 1.0
         else:
             # Нормализация percentage
-            data["percentage"] = max(0.0, min(1.0, float(data["percentage"])))
-            
+            if data["percentage"] is None:
+                data["percentage"] = 1.0
+            else:
+                data["percentage"] = max(0.0, min(1.0, float(data["percentage"])))
+
         return data
     except Exception as e:
         error(f"❌ Ошибка парсинга ответа: {str(e)}")
-        from config import DEFAULT_HOLD_TIME_MINUTES
+        from src.config import DEFAULT_HOLD_TIME_MINUTES
         return {
             "action": "hold",
             "confidence": 0.0,
@@ -136,7 +139,7 @@ def should_call_ai(analysis):
         if abs(current_price - sma) / sma < 0.005:
             info(f"💤 {symbol}: Нейтральный рынок (RSI={rsi}, Цена~SMA) -> Пропуск ИИ (Auto-HOLD)")
             return False
-        
+
         info(f"💤 {symbol}: RSI в нейтральной зоне ({rsi}) -> Пропуск ИИ (Auto-HOLD)")
         return False
 
@@ -175,7 +178,7 @@ def main(analyses):
             info(f"📨 Ответ DeepSeek: (dict) {response}")
 
         prediction = parse_response(response)
-        
+
         predictions.append({
             **analysis,
             "action": prediction["action"],
@@ -184,10 +187,10 @@ def main(analyses):
             "hold_minutes": prediction["hold_minutes"],
             "reason": prediction["reason"]
         })
-        
+
         # Задержка между запросами к API
         time.sleep(1)
-    
+
     return predictions
 
 if __name__ == "__main__":

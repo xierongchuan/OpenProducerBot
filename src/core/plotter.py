@@ -2,7 +2,7 @@ import json
 import os
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Проверяем наличие pandas
 try:
@@ -110,10 +110,24 @@ def plot_symbol(symbol, time_range=None):
     if time_range is None:
         time_range = DEFAULT_PLOTTER_RANGE
 
-    range_config = PLOTTER_RANGES.get(time_range, PLOTTER_RANGES.get("1D"))
+    range_config = PLOTTER_RANGES.get(time_range)
+
+    if not range_config:
+        # Try case-insensitive match
+        for key, val in PLOTTER_RANGES.items():
+            if key.lower() == time_range.lower():
+                range_config = val
+                time_range = key # Update to canonical name for display
+                break
+
+    if not range_config:
+        info(f"⚠️ Range '{time_range}' not found in config. Using default 1D.")
+        range_config = PLOTTER_RANGES.get("1D")
+        time_range = "1D"
 
     # Calculate cutoff time
-    now = datetime.now()
+    # Use timezone-aware UTC
+    now = datetime.now(timezone.utc)
     cutoff_time = now
 
     if "days" in range_config:
@@ -127,7 +141,7 @@ def plot_symbol(symbol, time_range=None):
         cutoff_time = now - timedelta(days=1)
 
     # Подготавливаем данные
-    timestamps = []
+    dates = [] # Store datetime objects directly
     opens = []
     highs = []
     lows = []
@@ -140,22 +154,25 @@ def plot_symbol(symbol, time_range=None):
         try:
             # Try parsing ISO format
             if ts_str.endswith('Z'):
-                ts_dt = datetime.fromisoformat(ts_str.replace('Z', '+00:00')).replace(tzinfo=None)
+                ts_dt = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
             else:
-                ts_dt = datetime.fromisoformat(ts_str).replace(tzinfo=None)
+                # Assume UTC if no tz info
+                ts_dt = datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
         except ValueError:
              # Fallback for other formats if needed
              try:
                  from dateutil import parser
-                 ts_dt = parser.parse(ts_str).replace(tzinfo=None)
+                 ts_dt = parser.parse(ts_str).replace(tzinfo=timezone.utc)
              except:
                  continue # Skip if can't parse
 
-        # Filter by time
+        # Filter by time (compare UTC to UTC)
         if ts_dt < cutoff_time:
             continue
 
-        timestamps.append(ts_str)
+        # Convert to Local Time (Naive) for plotting
+        ts_local = ts_dt.astimezone().replace(tzinfo=None)
+        dates.append(ts_local)
 
         # Handle different price formats
         if isinstance(candle["closePrice"], dict):
@@ -172,20 +189,11 @@ def plot_symbol(symbol, time_range=None):
             volumes.append(float(candle.get("volume", 0)))
 
     # Check if we have data after filtering
-    if not timestamps:
+    if not dates:
         info(f"⚠️ Нет данных для {symbol} за период {time_range}")
         return
 
-    # Конвертируем временные метки в datetime объекты
-    if PANDAS_AVAILABLE:
-        import pandas as pd
-        dates = pd.to_datetime(timestamps)
-    else:
-        try:
-            from dateutil import parser
-            dates = [parser.parse(ts) for ts in timestamps]
-        except ImportError:
-            dates = [datetime.fromisoformat(ts.replace('Z', '+00:00')) for ts in timestamps]
+    # dates is already a list of datetime objects, no need for further conversion
 
     # Рассчитываем индикаторы
     # SMAs
@@ -221,6 +229,8 @@ def plot_symbol(symbol, time_range=None):
         chart_width = 24
     elif total_minutes <= 12 * 60: # <= 12h (and > 4h)
         chart_width = 36
+
+
 
     # Создаем фигуру с тремя subplot'ами (Цена, Объем, RSI)
     # Увеличиваем размер фигуры для высокого разрешения

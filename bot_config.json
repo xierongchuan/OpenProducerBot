@@ -42,17 +42,17 @@
     "1D": {
       "days": 1,
       "candles": 1440,
-      "interval": "5m"
+      "interval": "1m"
     },
     "3D": {
       "days": 3,
       "candles": 864,
-      "interval": "15m"
+      "interval": "5m"
     },
     "1W": {
       "days": 7,
-      "candles": 2016,
-      "interval": "1h"
+      "candles": 672,
+      "interval": "15h"
     }
   },
   "PLOTTER_RANGES": {
@@ -102,7 +102,7 @@
     }
   },
   "DEFAULT_CHART_RANGE": "1D",
-  "DEFAULT_PLOTTER_RANGE": "1D",
+  "DEFAULT_PLOTTER_RANGE": "2h",
   "CLEANUP_SETTINGS": {
     "cleanup_old_charts": true,
     "charts_retention_days": 7,

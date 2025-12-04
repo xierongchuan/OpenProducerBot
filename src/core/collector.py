@@ -16,19 +16,19 @@ def ensure_dirs():
 def fetch_prices(symbol):
     """Получает 288 последних свечей (24 часа истории) для символа"""
     info(f"📊 Получение цен для {symbol}...")
-    
+
     client = get_exchange_client()
-    
+
     try:
-        prices = client.get_kline_data(symbol, interval="MINUTE_5", limit=288)
-        
+        prices = client.get_kline_data(symbol, interval="MINUTE_1", limit=288)
+
         if not prices:
             raise ValueError(f"API вернул пустой список цен для {symbol}")
-            
+
         # Basic validation of the first candle
         if not isinstance(prices[0], dict):
              raise ValueError(f"Некорректный формат данных о ценах: {type(prices[0])}")
-             
+
         required_fields = ["closePrice", "snapshotTimeUTC"]
         for field in required_fields:
             if field not in prices[0]:
@@ -88,7 +88,7 @@ def main():
             news = fetch_news(symbol)
         else:
             news = []
-            
+
         news_file = f"{DATA_DIR}/news/{symbol_file}.json"
         with open(news_file, "w") as f:
             json.dump(news, f)

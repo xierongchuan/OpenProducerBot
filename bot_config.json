@@ -40,7 +40,7 @@
   "CHART_RANGES": {
     "1D": {
       "days": 1,
-      "candles": 288
+      "candles": 1440
     },
     "3D": {
       "days": 3,

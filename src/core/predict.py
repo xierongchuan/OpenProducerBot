@@ -173,7 +173,7 @@ def main(analyses):
             cleaned = re.sub(r'```json\s*', '', response)
             cleaned = re.sub(r'```', '', cleaned)
             # Показываем первые 500 символов очищенного ответа
-            info(f"📨 Ответ DeepSeek: {cleaned[:500]}{'...' if len(cleaned) > 500 else ''}")
+            info(f"📨 Ответ DeepSeek: {cleaned}")
         else:
             info(f"📨 Ответ DeepSeek: (dict) {response}")
 

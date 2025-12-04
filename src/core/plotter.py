@@ -100,11 +100,31 @@ def cleanup_old_files():
     except Exception as e:
         error(f"❌ Ошибка при очистке старых файлов: {str(e)}")
 
-def plot_symbol(symbol):
+def plot_symbol(symbol, time_range=None):
     """Строит график для символа и сохраняет как PNG"""
     # Загружаем данные
     with open(f"{DATA_DIR}/prices/{get_filename(symbol)}.json") as f:
         prices = json.load(f)
+
+    # Determine time range settings
+    if time_range is None:
+        time_range = DEFAULT_CHART_RANGE
+
+    range_config = CHART_RANGES.get(time_range, CHART_RANGES.get("1D"))
+
+    # Calculate cutoff time
+    now = datetime.now()
+    cutoff_time = now
+
+    if "days" in range_config:
+        cutoff_time = now - timedelta(days=range_config["days"])
+    elif "hours" in range_config:
+        cutoff_time = now - timedelta(hours=range_config["hours"])
+    elif "minutes" in range_config:
+        cutoff_time = now - timedelta(minutes=range_config["minutes"])
+    else:
+        # Default fallback
+        cutoff_time = now - timedelta(days=1)
 
     # Подготавливаем данные
     timestamps = []
@@ -115,7 +135,27 @@ def plot_symbol(symbol):
     volumes = []
 
     for candle in prices:
-        timestamps.append(candle["snapshotTimeUTC"])
+        # Parse timestamp first to filter
+        ts_str = candle["snapshotTimeUTC"]
+        try:
+            # Try parsing ISO format
+            if ts_str.endswith('Z'):
+                ts_dt = datetime.fromisoformat(ts_str.replace('Z', '+00:00')).replace(tzinfo=None)
+            else:
+                ts_dt = datetime.fromisoformat(ts_str).replace(tzinfo=None)
+        except ValueError:
+             # Fallback for other formats if needed
+             try:
+                 from dateutil import parser
+                 ts_dt = parser.parse(ts_str).replace(tzinfo=None)
+             except:
+                 continue # Skip if can't parse
+
+        # Filter by time
+        if ts_dt < cutoff_time:
+            continue
+
+        timestamps.append(ts_str)
 
         # Handle different price formats
         if isinstance(candle["closePrice"], dict):
@@ -130,6 +170,11 @@ def plot_symbol(symbol):
             lows.append(float(candle["lowPrice"]))
             closes.append(float(candle["closePrice"]))
             volumes.append(float(candle.get("volume", 0)))
+
+    # Check if we have data after filtering
+    if not timestamps:
+        info(f"⚠️ Нет данных для {symbol} за период {time_range}")
+        return
 
     # Конвертируем временные метки в datetime объекты
     if PANDAS_AVAILABLE:
@@ -158,7 +203,8 @@ def plot_symbol(symbol):
 
     # Создаем фигуру с тремя subplot'ами (Цена, Объем, RSI)
     # Увеличиваем размер фигуры для высокого разрешения
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(48, 18), gridspec_kw={'height_ratios': [3, 1, 1]}, sharex=True)
+    # Reduced height by 25% (18 -> 13.5)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(48, 13.5), gridspec_kw={'height_ratios': [3, 1, 1]}, sharex=True)
 
     # --- 1. График Цены (Candlesticks + SMAs) ---
 
@@ -192,8 +238,7 @@ def plot_symbol(symbol):
     col_up = '#26a69a'   # Green
     col_down = '#ef5350' # Red
     # Determine width based on interval
-    chart_config = CHART_RANGES.get(DEFAULT_CHART_RANGE, {})
-    interval = chart_config.get("interval", "1m")
+    interval = range_config.get("interval", "1m")
 
     # Width mapping (approximate days per candle)
     # 1m = 1/(24*60) = 0.00069
@@ -245,7 +290,7 @@ def plot_symbol(symbol):
         ax1.plot(dates, smas[period], label=f"SMA({period})", color=sma_colors[period], linewidth=1.5, alpha=0.9)
 
     # Оформление графика цены
-    ax1.set_title(f"{symbol} - {datetime.now().strftime('%Y-%m-%d %H:%M')}", fontsize=20, pad=20)
+    ax1.set_title(f"{symbol} - {datetime.now().strftime('%Y-%m-%d %H:%M')} ({time_range})", fontsize=20, pad=20)
     ax1.set_ylabel("Цена", fontsize=14, labelpad=10)
     ax1.legend(fontsize=12, loc='upper left')
     ax1.grid(alpha=0.2)
@@ -301,15 +346,22 @@ def plot_symbol(symbol):
     plt.savefig(filename, dpi=200, bbox_inches='tight')
     plt.close()
 
-    info(f"🖼️ График для {symbol} сохранен как {filename}")
+    info(f"🖼️ График для {symbol} сохранен как {filename} (Range: {time_range})")
 
 def main():
     """Основная функция генерации графиков"""
     from src.config import ENABLE_PARALLEL_PROCESSING
     import concurrent.futures
     import multiprocessing
+    import sys
 
-    info("📊 Генерация графиков...")
+    # Allow passing range as argument
+    if len(sys.argv) > 1:
+        chart_range = sys.argv[1]
+    else:
+        chart_range = DEFAULT_CHART_RANGE
+
+    info(f"📊 Генерация графиков (Range: {chart_range})...")
 
     # Убеждаемся что директория существует
     os.makedirs(CHARTS_DIR, exist_ok=True)
@@ -324,7 +376,7 @@ def main():
         info(f"🚀 Запуск параллельной генерации графиков (процессов: {max_workers})...")
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-            future_to_symbol = {executor.submit(plot_symbol, symbol): symbol for symbol in SYMBOLS}
+            future_to_symbol = {executor.submit(plot_symbol, symbol, chart_range): symbol for symbol in SYMBOLS}
 
             for future in concurrent.futures.as_completed(future_to_symbol):
                 symbol = future_to_symbol[future]
@@ -337,7 +389,7 @@ def main():
         info("🐌 Запуск последовательной генерации графиков...")
         for symbol in SYMBOLS:
             try:
-                plot_symbol(symbol)
+                plot_symbol(symbol, chart_range)
             except Exception as e:
                 error(f"❌ Ошибка генерации графика для {symbol}: {str(e)}")
 

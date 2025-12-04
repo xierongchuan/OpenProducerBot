@@ -65,6 +65,7 @@
   "ENABLE_NEWS": false,
   "ENABLE_ADVANCED_ANALYSIS": true,
   "ENABLE_PARALLEL_PROCESSING": true,
+  "AGGRESSIVE_MODE": false,
   "NEWS_SETTINGS": {
     "use_real_news": true,
     "provider": "newsapi",

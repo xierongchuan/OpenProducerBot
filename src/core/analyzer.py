@@ -245,6 +245,17 @@ def analyze_symbol(symbol, position=None):
     4. Соблюдай Risk/Reward Ratio минимум 1:1.5. Тейк-профит должен быть БОЛЬШЕ, чем Стоп-лосс (в % от цены входа). Не ставь огромные стопы ради безопасности.
         """
 
+    # Aggressive Mode Context
+    from src.config import AGGRESSIVE_MODE
+    aggressive_text = ""
+    if AGGRESSIVE_MODE:
+        aggressive_text = """
+    ⚠️ ВКЛЮЧЕН АГРЕССИВНЫЙ РЕЖИМ:
+    - Ищи возможности для входа по тренду (Trend Continuation).
+    - Если RSI около 50, но цена отскакивает от SMA по тренду -> ЭТО СИГНАЛ.
+    - Не бойся входить на откатах, если структура рынка сохраняется.
+        """
+
     # Формируем промпт
     prompt = f"""
     Ты — профессиональный алгоритмический трейдер. Твоя задача — принять торговое решение для {symbol} на основе предоставленных данных.
@@ -258,6 +269,7 @@ def analyze_symbol(symbol, position=None):
     - RSI({AI_THRESHOLDS['RSI_PERIOD']}): {rsi:.2f}
     - ТЕКУЩИЙ ТРЕНД: {trend} (Цена {'выше' if trend == 'UP' else 'ниже'} SMA)
     {advanced_analysis_text}
+    {aggressive_text}
     {news_section}
     ### ТОРГОВАЯ СТРАТЕГИЯ:
     {strategy_text}

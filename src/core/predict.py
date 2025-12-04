@@ -148,8 +148,22 @@ def should_call_ai(analysis):
         return True
 
     # 2. Фильтр по RSI (Нейтральная зона 40-60)
-    # Если RSI в середине, и нет позиции -> скорее всего флэт, просто держим
     if 40 <= rsi <= 60:
+        from src.config import AGGRESSIVE_MODE
+
+        # В Агрессивном режиме проверяем тренд
+        if AGGRESSIVE_MODE:
+            # Тренд ВВЕРХ (Цена > SMA) и RSI < 60 -> Возможен откат для покупки
+            if current_price > sma and rsi < 55:
+                info(f"🔥 {symbol}: Агрессивный режим. Тренд UP + RSI={rsi} -> Вызываем ИИ (Поиск отката)")
+                return True
+
+            # Тренд ВНИЗ (Цена < SMA) и RSI > 40 -> Возможен откат для продажи
+            if current_price < sma and rsi > 45:
+                info(f"🔥 {symbol}: Агрессивный режим. Тренд DOWN + RSI={rsi} -> Вызываем ИИ (Поиск отката)")
+                return True
+
+        # Стандартная логика (или если тренд не подтвержден в агрессивном режиме)
         # Дополнительная проверка: Цена прилипла к SMA? (в пределах 0.5%)
         if abs(current_price - sma) / sma < 0.005:
             info(f"💤 {symbol}: Нейтральный рынок (RSI={rsi}, Цена~SMA) -> Пропуск ИИ (Auto-HOLD)")

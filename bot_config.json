@@ -61,6 +61,8 @@
     "cleanup_old_data": true,
     "data_retention_days": 30
   },
+  "ENABLE_NEWS": false,
+  "ENABLE_ADVANCED_ANALYSIS": true,
   "NEWS_SETTINGS": {
     "use_real_news": true,
     "provider": "newsapi",

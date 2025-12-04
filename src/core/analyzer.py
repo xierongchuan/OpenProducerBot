@@ -60,6 +60,91 @@ def calculate_indicators(prices):
 
     return round(sma, 5), round(rsi, 2)
 
+def calculate_support_resistance(prices, window=20):
+    """
+    Определяет уровни поддержки и сопротивления на основе локальных минимумов и максимумов.
+    :param prices: Список цен (Close)
+    :param window: Окно для поиска локальных экстремумов
+    :return: dict с 'supports' и 'resistances'
+    """
+    if len(prices) < window:
+        return {"supports": [], "resistances": []}
+
+    supports = []
+    resistances = []
+
+    # Простой алгоритм поиска локальных экстремумов
+    for i in range(window, len(prices) - window):
+        is_support = True
+        is_resistance = True
+
+        for j in range(i - window, i + window + 1):
+            if prices[j] < prices[i]:
+                is_support = False
+            if prices[j] > prices[i]:
+                is_resistance = False
+
+        if is_support:
+            supports.append(prices[i])
+        if is_resistance:
+            resistances.append(prices[i])
+
+    # Фильтрация близких уровней (кластеризация) - упрощенно берем уникальные с округлением
+    supports = sorted(list(set([round(x, 2) for x in supports])))
+    resistances = sorted(list(set([round(x, 2) for x in resistances])))
+
+    # Оставляем только ближайшие к текущей цене (например, 2 снизу и 2 сверху)
+    current_price = prices[-1]
+    nearest_supports = [s for s in supports if s < current_price][-2:]
+    nearest_resistances = [r for r in resistances if r > current_price][:2]
+
+    return {
+        "supports": nearest_supports,
+        "resistances": nearest_resistances
+    }
+
+def analyze_volume_profile(volumes, prices):
+    """
+    Анализирует профиль объема и волатильности.
+    :param volumes: Список объемов
+    :param prices: Список цен
+    :return: Строка с описанием ситуации
+    """
+    if len(volumes) < 20:
+        return "Недостаточно данных для анализа объема."
+
+    avg_volume = sum(volumes[-20:]) / 20
+    current_volume = volumes[-1]
+
+    vol_ratio = current_volume / avg_volume if avg_volume > 0 else 0
+
+    # Волатильность (ATR-like)
+    high_low_diffs = [abs(prices[i] - prices[i-1]) for i in range(1, len(prices))]
+    avg_volatility = sum(high_low_diffs[-20:]) / 20 if high_low_diffs else 0
+    current_volatility = abs(prices[-1] - prices[-2]) if len(prices) > 1 else 0
+
+    volatility_ratio = current_volatility / avg_volatility if avg_volatility > 0 else 0
+
+    description = []
+
+    # Анализ объема
+    if vol_ratio > 2.0:
+        description.append(f"🔥 Аномально высокий объем ({vol_ratio:.1f}x от среднего). Это признак сильного интереса.")
+    elif vol_ratio > 1.2:
+        description.append(f"📊 Повышенный объем ({vol_ratio:.1f}x).")
+    elif vol_ratio < 0.5:
+        description.append(f"💤 Низкий объем ({vol_ratio:.1f}x). Рынок спит или выжидает.")
+    else:
+        description.append("Объем в норме.")
+
+    # Анализ волатильности
+    if volatility_ratio > 2.0:
+        description.append(f"⚡ Высокая волатильность ({volatility_ratio:.1f}x). Возможна паника или эйфория.")
+    elif volatility_ratio < 0.5:
+        description.append(f"🐌 Низкая волатильность ({volatility_ratio:.1f}x). Сжатие пружины.")
+
+    return " ".join(description)
+
 from src.exchanges.exchange_factory import get_exchange_client
 
 def analyze_symbol(symbol, position=None):
@@ -135,6 +220,29 @@ def analyze_symbol(symbol, position=None):
     3.  **HOLD**: Если условия входа не выполнены.
         """
         news_section = ""
+    from src.config import AI_THRESHOLDS, ENABLE_ADVANCED_ANALYSIS
+
+    # Calculate advanced metrics if enabled
+    advanced_analysis_text = ""
+    if ENABLE_ADVANCED_ANALYSIS:
+        # Extract numerical data from price dicts
+        close_prices = [float(p['closePrice']) for p in prices]
+        volumes = [float(p['volume']) for p in prices]
+
+        sr_levels = calculate_support_resistance(close_prices)
+        volume_context = analyze_volume_profile(volumes, close_prices)
+
+        advanced_analysis_text = f"""
+    ### РЫНОЧНАЯ СТРУКТУРА И ПСИХОЛОГИЯ:
+    - Ближайшие Поддержки: {sr_levels['supports']}
+    - Ближайшие Сопротивления: {sr_levels['resistances']}
+    - Контекст Объема/Волатильности: {volume_context}
+
+    ### ПСИХОЛОГИЧЕСКИЙ АНАЛИЗ:
+    1. Оцени, кто контролирует рынок (Быки или Медведи)?
+    2. Есть ли признаки "ловушки" для трейдеров или панических продаж?
+    3. Учти уровни поддержки/сопротивления при расчете SL/TP.
+        """
 
     # Формируем промпт
     prompt = f"""
@@ -148,6 +256,7 @@ def analyze_symbol(symbol, position=None):
     - SMA({AI_THRESHOLDS['SMA_PERIOD']}): {sma:.5f}
     - RSI({AI_THRESHOLDS['RSI_PERIOD']}): {rsi:.2f}
     - ТЕКУЩИЙ ТРЕНД: {trend} (Цена {'выше' if trend == 'UP' else 'ниже'} SMA)
+    {advanced_analysis_text}
     {news_section}
     ### ТОРГОВАЯ СТРАТЕГИЯ:
     {strategy_text}

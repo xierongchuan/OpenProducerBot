@@ -79,7 +79,7 @@ def load_bot_config():
             "extract_full_content": True
         }
     }
-    
+
     if os.path.exists(config_path):
         try:
             with open(config_path, 'r') as f:
@@ -89,7 +89,7 @@ def load_bot_config():
                 print(f"✅ Загружена конфигурация из {config_path}")
         except Exception as e:
             print(f"⚠️ Ошибка загрузки {config_path}: {e}. Используются настройки по умолчанию.")
-    
+
     return default_config
 
 # Загружаем конфиг
@@ -131,8 +131,8 @@ ALPHAVANTAGE_KEY = os.getenv("ALPHAVANTAGE_KEY", "")
 FINNHUB_KEY = os.getenv("FINNHUB_KEY", "")
 
 # Настройки новостей
-ENABLE_NEWS = os.getenv("ENABLE_NEWS", "true").lower() == "true"
-
+ENABLE_NEWS = BOT_CONFIG.get("ENABLE_NEWS", True)
+ENABLE_ADVANCED_ANALYSIS = BOT_CONFIG.get("ENABLE_ADVANCED_ANALYSIS", True)
 NEWS_SETTINGS = BOT_CONFIG.get("NEWS_SETTINGS", {})
 
 # DeepSeek API (обязательно установите DEEPSEEK_API_KEY)

@@ -2,7 +2,7 @@ import json
 import requests
 import time
 from src.config import DEEPSEEK_API_KEY
-from src.utils.logger import info, error
+from src.utils.logger import info, error, warning
 
 def get_prediction(prompt):
     """Отправляет промпт в DeepSeek и получает ответ"""
@@ -198,8 +198,8 @@ def process_analysis(analysis):
         # Check if parsing failed (it returns a default dict with specific reason)
         if prediction["reason"] == "Ошибка парсинга ответа DeepSeek" or prediction["reason"].startswith("Ошибка API"):
             if attempt < max_retries:
-                warning(f"⚠️ {analysis['symbol']}: Ошибка парсинга/API. Повторная попытка через 2 сек...")
-                time.sleep(2)
+                warning(f"⚠️ {analysis['symbol']}: Ошибка парсинга/API. Повторная попытка через 1 сек...")
+                time.sleep(1)
                 continue
             else:
                 error(f"❌ {analysis['symbol']}: Не удалось получить корректный ответ после {max_retries+1} попыток.")

@@ -333,7 +333,7 @@ class BingXClient(ExchangeClient):
             error(f"❌ Error setting leverage: {e}")
             return False
 
-    def place_order(self, symbol, side, price, quantity, type="MARKET", sl=None, tp=None):
+    def place_order(self, symbol, side, price, quantity, type="MARKET", sl=None, tp=None, positionSide=None):
         """Размещает ордер"""
         from src.config import LEVERAGE
 
@@ -360,7 +360,7 @@ class BingXClient(ExchangeClient):
         params = {
             "symbol": formatted_symbol,
             "side": side.upper(), # BUY or SELL
-            "positionSide": "LONG" if side.upper() == "BUY" else "SHORT", # Required for Hedge Mode / V2
+            "positionSide": positionSide if positionSide else ("LONG" if side.upper() == "BUY" else "SHORT"), # Use provided or infer
             "type": type.upper(),
             "quantity": quantity,
         }
@@ -472,7 +472,13 @@ class BingXClient(ExchangeClient):
             error(f"❌ Position {position_id} not found for closing")
             return False
 
-        formatted_symbol = symbol.replace("/", "-")
+        # Ensure symbol format is correct (BTC-USDT)
+        if symbol.endswith("/USD"):
+            formatted_symbol = symbol.replace("/USD", "-USDT")
+        elif symbol.endswith("USDT") and "-" not in symbol and "/" not in symbol:
+            formatted_symbol = symbol[:-4] + "-USDT"
+        else:
+            formatted_symbol = symbol.replace("/", "-")
 
         # Determine side and positionSide for closing
         # To close a LONG, we SELL with positionSide=LONG
@@ -527,9 +533,94 @@ class BingXClient(ExchangeClient):
         if response and response.get("code") == 0:
             info(f"✅ Position {position_id} closed (partial: {percentage})")
             return True
-        else:
             error(f"❌ Failed to close position {position_id}: {response}")
             return False
+
+    def set_sl_tp(self, symbol, position_side, tp=None, sl=None, quantity=None):
+        """
+        Устанавливает или обновляет SL/TP для позиции.
+        :param symbol: Символ (BTCUSDT)
+        :param position_side: Сторона позиции (LONG или SHORT)
+        :param tp: Цена Take Profit (опционально)
+        :param sl: Цена Stop Loss (опционально)
+        :param quantity: Размер позиции (опционально, если не указан - берется из API)
+        """
+        # 1. Cancel existing open orders (SL/TP are open orders)
+        open_orders = self.get_open_orders(symbol)
+        for order in open_orders:
+            # Cancel only SL/TP orders? Or all?
+            # Safer to cancel all open orders for this symbol to avoid duplicates
+            # But be careful if there are other limit orders.
+            # Usually bots like this only have SL/TP as open orders.
+            self.cancel_order(symbol, order["orderId"])
+
+        # 2. Place new SL/TP
+        # For LONG position: SL/TP are SELL orders with positionSide=LONG
+        # For SHORT position: SL/TP are BUY orders with positionSide=SHORT
+
+        side = "SELL" if position_side.upper() == "LONG" else "BUY"
+
+        if tp:
+            info(f"🔄 Setting TP for {symbol} ({position_side}) at {tp}")
+            # TP is TAKE_PROFIT_MARKET
+            # Quantity is not strictly required for SL/TP in some modes if it closes position,
+            # but usually required. We might need to know position size.
+            # BingX often allows 0 or omitting quantity for "close all" or "entire position" logic in some endpoints,
+            # but standard trade/order endpoint usually needs quantity.
+            # However, for SL/TP specifically, there might be a different way.
+            # Let's check if we can use the 'takeProfit' param on a new order? No, we are updating.
+
+            # If we don't know quantity, we might fail.
+            # But wait, we can fetch position size.
+            size = quantity
+            if not size:
+                positions = self.get_positions()
+                # Normalize symbol
+                norm_symbol = symbol.replace("-", "")
+                if norm_symbol in positions and positions[norm_symbol]:
+                    # Assuming one position per symbol
+                    size = positions[norm_symbol][0]["size"]
+
+            if size:
+                params = {
+                    "symbol": symbol.replace("/", "-").replace("USDT", "-USDT") if "-" not in symbol else symbol,
+                    "side": side,
+                    "positionSide": position_side,
+                    "type": "TAKE_PROFIT_MARKET",
+                    "stopPrice": tp,
+                    "workingType": "MARK_PRICE",
+                    "quantity": size
+                }
+                # Use make_request directly as place_order wrapper might be too simple
+                endpoint = "/openApi/swap/v2/trade/order"
+                self.make_request("post", endpoint, params)
+            else:
+                error(f"❌ Cannot set TP: Position size unknown for {symbol}")
+
+        if sl:
+            info(f"🔄 Setting SL for {symbol} ({position_side}) at {sl}")
+            # Fetch size again if needed (optimized in real code)
+            size = quantity
+            if not size:
+                positions = self.get_positions()
+                norm_symbol = symbol.replace("-", "")
+                if norm_symbol in positions and positions[norm_symbol]:
+                    size = positions[norm_symbol][0]["size"]
+
+            if size:
+                params = {
+                    "symbol": symbol.replace("/", "-").replace("USDT", "-USDT") if "-" not in symbol else symbol,
+                    "side": side,
+                    "positionSide": position_side,
+                    "type": "STOP_MARKET",
+                    "stopPrice": sl,
+                    "workingType": "MARK_PRICE",
+                    "quantity": size
+                }
+                endpoint = "/openApi/swap/v2/trade/order"
+                self.make_request("post", endpoint, params)
+            else:
+                error(f"❌ Cannot set SL: Position size unknown for {symbol}")
 
 # Global instance
 bingx_client = BingXClient()

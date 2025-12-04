@@ -117,7 +117,7 @@ def analyze_symbol(symbol, position=None):
     2.  **SELL**: (Негативные новости + RSI > 30) **ИЛИ** (Тренд DOWN + RSI > 55).
     3.  **HOLD**: Противоречивые новости или нейтральный фон, и нет технических сигналов.
         """
-        
+
         news_section = f"""
     ### НОВОСТНОЙ ФОН:
     {news_text.strip()}
@@ -155,18 +155,21 @@ def analyze_symbol(symbol, position=None):
     ### ТВОЯ ЗАДАЧА:
     1.  Учти наличие открытой позиции.
     2.  Проверь условия входа согласно стратегии.
-    3.  Прими решение: buy, sell, close, close_partial, или hold.
+    3.  Рассчитай уровни Stop Loss и Take Profit на основе технических уровней (поддержка/сопротивление, SMA).
+    4.  Прими решение: buy, sell, close, close_partial, или hold.
 
     ### ФОРМАТ ОТВЕТА (JSON ONLY):
     {{
         "action": "buy" | "sell" | "close" | "close_partial" | "hold",
         "confidence": 0.0-1.0 (0.8+ для сильных сигналов),
         "percentage": 0.1-1.0 (Только для close_partial, например 0.5 для 50%),
+        "stop_loss": float (Цена стоп-лосса, ОБЯЗАТЕЛЬНО для buy/sell/hold),
+        "take_profit": float (Цена тейк-профита, ОБЯЗАТЕЛЬНО для buy/sell/hold),
         "hold_minutes": {AI_THRESHOLDS['HOLD_TIMES'][-1]},
         "reason": "Краткое объяснение: Позиция, Тренд, RSI, Новости (если есть)."
     }}
     """
-    
+
     return {
         "symbol": symbol,
         "current_price": current_price,
@@ -179,7 +182,7 @@ def analyze_symbol(symbol, position=None):
 def main():
     """Основная функция анализа"""
     results = []
-    
+
     # Получаем открытые позиции
     try:
         client = get_exchange_client()
@@ -195,11 +198,11 @@ def main():
             # BingX symbols might need mapping if they differ from config SYMBOLS
             # But client should handle normalization or we check carefully
             # For now assume exact match or simple mapping
-            
+
             symbol_positions = positions.get(symbol, [])
             # Take the first position if multiple (simplified)
             current_position = symbol_positions[0] if symbol_positions else None
-            
+
             results.append(analyze_symbol(symbol, position=current_position))
             info(f"🔍 Анализ {symbol} завершен")
         except Exception as e:

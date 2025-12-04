@@ -58,7 +58,7 @@ def get_open_positions():
         error(f"❌ Ошибка получения позиций: {str(e)}")
         return {}
 
-def create_order(symbol, direction, price, hold_minutes=DEFAULT_HOLD_TIME_MINUTES):
+def create_order(symbol, direction, price, hold_minutes=DEFAULT_HOLD_TIME_MINUTES, ai_sl=None, ai_tp=None):
     """Создает ордер с TP/SL через ExchangeClient"""
     client = get_exchange_client()
 
@@ -66,12 +66,21 @@ def create_order(symbol, direction, price, hold_minutes=DEFAULT_HOLD_TIME_MINUTE
         price = float(price)
 
         # Calculate absolute TP/SL prices
+        # Calculate absolute TP/SL prices
         if direction.upper() == "BUY":
             tp_price = price * (1 + TAKE_PROFIT_PERCENT / 100)
             sl_price = price * (1 - STOP_LOSS_PERCENT / 100)
         else:
             tp_price = price * (1 - TAKE_PROFIT_PERCENT / 100)
             sl_price = price * (1 + STOP_LOSS_PERCENT / 100)
+
+        # Override with AI values if provided
+        if ai_tp:
+            info(f"🤖 Using AI Take Profit: {ai_tp} (Calculated: {tp_price:.4f})")
+            tp_price = float(ai_tp)
+        if ai_sl:
+            info(f"🤖 Using AI Stop Loss: {ai_sl} (Calculated: {sl_price:.4f})")
+            sl_price = float(ai_sl)
 
         # Rounding (optional, but good for APIs)
         tp_price = round(tp_price, 4) # 4 decimals is safe for most forex/crypto
@@ -127,17 +136,34 @@ def create_order(symbol, direction, price, hold_minutes=DEFAULT_HOLD_TIME_MINUTE
 
         info(f"🧮 Calculated quantity: {quantity} (Balance: ${total_balance:.2f} | Amount: ${trade_amount:.2f} [{POSITION_SIZE_PERCENT}%])")
 
+        # Place order WITHOUT SL/TP first
+        # We will set SL/TP separately using set_sl_tp to ensure reliability and correct mode handling
         order_id = client.place_order(
             symbol=symbol,
             side=direction,
             price=price,
             quantity=quantity,
             type="MARKET",
-            sl=sl_price,
-            tp=tp_price
+            sl=None,
+            tp=None
         )
 
         if order_id:
+            # Set SL/TP immediately after order placement
+            if tp_price or sl_price:
+                info(f"🔄 Setting SL/TP for new order {order_id}...")
+                try:
+                    # Determine position side
+                    pos_side = "LONG" if direction.upper() == "BUY" else "SHORT"
+
+                    if hasattr(client, "set_sl_tp"):
+                        client.set_sl_tp(symbol, pos_side, tp=tp_price, sl=sl_price, quantity=quantity)
+                        info(f"✅ SL/TP set for {symbol} (TP: {tp_price}, SL: {sl_price})")
+                    else:
+                        warning(f"⚠️ Client does not support set_sl_tp, SL/TP might not be set")
+                except Exception as e:
+                    error(f"❌ Failed to set SL/TP for new order {order_id}: {e}")
+
             # Save to cache
             cache = load_position_cache()
             cache[str(order_id)] = hold_minutes
@@ -229,6 +255,27 @@ def main(predictions):
             else:
                 info(f"⚠️ У {symbol} уже есть открытая позиция. Новых входов не делаем. Сигнал: {pred['action']}")
 
+            # Check for SL/TP updates on HOLD
+            if pred["action"] == "hold":
+                ai_sl = pred.get("stop_loss")
+                ai_tp = pred.get("take_profit")
+
+                if ai_sl or ai_tp:
+                    current_pos = positions[symbol][0]
+                    # Determine position side for set_sl_tp
+                    # BingXClient needs positionSide (LONG/SHORT)
+                    pos_type = current_pos["type"].upper() # BUY/SELL
+                    pos_side = "LONG" if pos_type == "BUY" else "SHORT"
+
+                    info(f"🔄 {symbol}: Updating SL/TP for existing position (SL: {ai_sl}, TP: {ai_tp})")
+                    try:
+                        if hasattr(client, "set_sl_tp"):
+                            client.set_sl_tp(symbol, pos_side, tp=ai_tp, sl=ai_sl)
+                        else:
+                            warning(f"⚠️ Client does not support set_sl_tp")
+                    except Exception as e:
+                        error(f"❌ Failed to update SL/TP for {symbol}: {e}")
+
             continue
 
         # Открываем новые позиции
@@ -237,7 +284,7 @@ def main(predictions):
 
             if pred["action"] == "buy":
                 info(f"📈 {symbol}: сигнал BUY (confidence={pred['confidence']}, причина: {pred['reason']})")
-                result = create_order(symbol, "BUY", current_price, hold_minutes)
+                result = create_order(symbol, "BUY", current_price, hold_minutes, ai_sl=pred.get("stop_loss"), ai_tp=pred.get("take_profit"))
                 # Обновляем локальный список позиций и кэш после успешного создания
                 if result:
                     positions = get_open_positions()
@@ -245,7 +292,7 @@ def main(predictions):
                     total_positions = sum(len(p) for p in positions.values())
             elif pred["action"] == "sell":
                 info(f"📉 {symbol}: сигнал SELL (confidence={pred['confidence']}, причина: {pred['reason']})")
-                result = create_order(symbol, "SELL", current_price, hold_minutes)
+                result = create_order(symbol, "SELL", current_price, hold_minutes, ai_sl=pred.get("stop_loss"), ai_tp=pred.get("take_profit"))
                 # Обновляем локальный список позиций и кэш после успешного создания
                 if result:
                     positions = get_open_positions()

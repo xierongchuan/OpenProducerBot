@@ -104,6 +104,21 @@ def parse_response(response):
             else:
                 data["percentage"] = max(0.0, min(1.0, float(data["percentage"])))
 
+        # Extract SL/TP
+        if "stop_loss" in data:
+            try:
+                data["stop_loss"] = float(data["stop_loss"])
+            except:
+                data["stop_loss"] = None
+        else:
+            data["stop_loss"] = None
+
+        if "take_profit" in data:
+            try:
+                data["take_profit"] = float(data["take_profit"])
+            except:
+                data["take_profit"] = None
+
         return data
     except Exception as e:
         error(f"❌ Ошибка парсинга ответа: {str(e)}")
@@ -184,6 +199,8 @@ def main(analyses):
             "action": prediction["action"],
             "confidence": prediction["confidence"],
             "percentage": prediction.get("percentage", 1.0),
+            "stop_loss": prediction.get("stop_loss"),
+            "take_profit": prediction.get("take_profit"),
             "hold_minutes": prediction["hold_minutes"],
             "reason": prediction["reason"]
         })

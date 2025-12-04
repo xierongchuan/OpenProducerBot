@@ -158,7 +158,7 @@ def plot_symbol(symbol):
 
     # Создаем фигуру с тремя subplot'ами (Цена, Объем, RSI)
     # Увеличиваем размер фигуры для высокого разрешения
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(24, 18), gridspec_kw={'height_ratios': [3, 1, 1]}, sharex=True)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(48, 18), gridspec_kw={'height_ratios': [3, 1, 1]}, sharex=True)
 
     # --- 1. График Цены (Candlesticks + SMAs) ---
 
@@ -204,7 +204,7 @@ def plot_symbol(symbol):
     # 1d = 0.8
 
     width_map = {
-        "1m": 0.0005,
+        "1m": 0.0006,
         "5m": 0.0025,
         "15m": 0.007,
         "30m": 0.015,
@@ -281,7 +281,15 @@ def plot_symbol(symbol):
     ax3.grid(alpha=0.2)
 
     # Форматирование оси X
-    ax3.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    # Форматирование оси X
+    def custom_date_formatter(x, pos):
+        dt = mdates.num2date(x)
+        # Если время 00:00, показываем дату (день и месяц)
+        if dt.hour == 0 and dt.minute == 0:
+            return dt.strftime('%d %b')
+        return dt.strftime('%H:%M')
+
+    ax3.xaxis.set_major_formatter(plt.FuncFormatter(custom_date_formatter))
     fig.autofmt_xdate()
 
     # Убираем отступы по краям (слева и справа)

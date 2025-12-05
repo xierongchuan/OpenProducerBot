@@ -128,6 +128,6 @@
   "AI_SETTINGS": {
     "provider": "siliconflow",
     "model": "deepseek-ai/DeepSeek-V3.2",
-    "base_url": null
+    "base_url": "https://api.siliconflow.com/v1/chat/completions"
   }
 }

@@ -191,25 +191,47 @@ def analyze_symbol(symbol, position=None):
         """
 
     # --- PnL Analysis & Fees Context ---
-    from src.config import TRADING_FEE, MIN_PARTIAL_CLOSE_PNL
+    from src.config import TRADING_FEE, MIN_PARTIAL_CLOSE_PNL, LEVERAGE
 
     # Calculate Net PnL (Approximate)
-    # PnL is usually in %, Fee is in % (per trade, so entry+exit = 2 * Fee)
-    # This is a safe estimation for the AI
     net_pnl_est = 0.0
     pnl_note = ""
 
     if position:
-        current_pnl = float(position['pnl'])
-        total_fee_est = TRADING_FEE * 2.0 # Entry + Exit
-        net_pnl_est = current_pnl - total_fee_est
+        # 1. Unpack Position Data
+        pnl_usdt = float(position['pnl']) # Unrealized PnL in USDT
+        size_coin = float(position['size']) # Size in COIN (e.g. BTC)
+        entry_price = float(position['entry'])
+
+        # 2. Calculate Value & Margin
+        # Value = Size * Entry (approximation for initial value)
+        position_value_usdt = size_coin * entry_price
+        margin_usdt = position_value_usdt / LEVERAGE if LEVERAGE > 0 else position_value_usdt
+
+        # 3. Calculate Fees (USDT)
+        # Fee = Value * FeeRate * 2 (Entry + Exit)
+        # Note: TRADING_FEE in config is usually percent (e.g. 0.05).
+        # If it's 0.05, we need to divide by 100 to get rate.
+        fee_rate = TRADING_FEE / 100.0
+        total_fee_usdt = position_value_usdt * fee_rate * 2.0
+
+        # 4. Calculate Net PnL (USDT)
+        net_pnl_usdt = pnl_usdt - total_fee_usdt
+
+        # 5. Calculate Percentages (ROE & Fee Impact) relative to Margin
+        roe_percent = (pnl_usdt / margin_usdt * 100) if margin_usdt > 0 else 0.0
+        fee_impact_percent = (total_fee_usdt / margin_usdt * 100) if margin_usdt > 0 else 0.0
+        net_roe_percent = roe_percent - fee_impact_percent
 
         # Soft Warning / Context Note
-        if current_pnl > 0 and net_pnl_est < MIN_PARTIAL_CLOSE_PNL:
+        # Trigger if Net ROE is low or slightly negative but PnL is positive
+        if pnl_usdt > 0 and net_roe_percent < MIN_PARTIAL_CLOSE_PNL:
              pnl_note = f"""
     > [!NOTE]
-    > **LOW PROFIT WARNING**: Текущий PnL ({current_pnl}%) едва покрывает комиссию (Est. Fee: {total_fee_est}%).
-    > Чистая прибыль ~{net_pnl_est:.2f}%.
+    > **LOW PROFIT WARNING**:
+    > - Текущий PnL: {pnl_usdt:.2f}USDT ({roe_percent:.2f}% ROE)
+    > - Комиссия (Est): ~{total_fee_usdt:.2f}USDT (-{fee_impact_percent:.2f}% ROE Impact)
+    > - Чистая прибыль: ~{net_pnl_usdt:.2f}USDT ({net_roe_percent:.2f}%)
     > **СОВЕТ**: Избегай частичного закрытия (close_partial), так как прибыль ничтожна.
     > Лучше держи (HOLD) для роста, либо закрывай полностью (CLOSE), если тренд развернулся и нужно бежать.
     """

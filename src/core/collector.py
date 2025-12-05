@@ -103,10 +103,7 @@ def main():
         return
 
     # Check config for parallel collection
-    try:
-        from src.config import ENABLE_PARALLEL_COLLECTION
-    except ImportError:
-        ENABLE_PARALLEL_COLLECTION = True
+    from src.config import ENABLE_PARALLEL_COLLECTION
 
     if ENABLE_PARALLEL_COLLECTION:
         import concurrent.futures

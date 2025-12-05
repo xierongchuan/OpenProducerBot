@@ -180,11 +180,15 @@
     "model": "deepseek-ai/DeepSeek-V3.2",
     "base_url": "https://api.siliconflow.com/v1/chat/completions"
   },
-  "ENABLE_PARALLEL_PROCESSING": true,
+  "ENABLE_ADVANCED_ANALYSIS": true,
+  "ENABLE_PARALLEL_MODE": true,
   "AGGRESSIVE_MODE": false,
   "AGGRESSIVE_SETTINGS": {
     "RSI_BUY_COND": 60,
-    "RSI_SELL_COND": 40
+    "RSI_BUY_FORBIDDEN": 80,
+    "RSI_SELL_COND": 40,
+    "RSI_SELL_FORBIDDEN": 20,
+    "MIN_RISK_REWARD_RATIO": 1.0
   },
   "ENABLE_NEWS": false,
   "SMART_SAMPLING": {
@@ -218,7 +222,7 @@
 | Параметр | Тип | Описание | Рекомендация |
 | :--- | :--- | :--- | :--- |
 | `EXCHANGE_SYMBOLS` | Dict | Список пар для торговли. Должны соответствовать тикерам BingX Standard Futures. | Топ-10 ликвидных монет |
-| `ENABLE_PARALLEL_PROCESSING` | Bool | **True**: Анализирует все пары одновременно (быстро). **False**: По очереди (медленно, для отладки). | `true` |
+| `ENABLE_PARALLEL_MODE` | Bool | **True**: Включает параллельный анализ ИИ и генерацию графиков. | `true` |
 | `AGGRESSIVE_MODE` | Bool | **True**: Включает агрессивную стратегию с более широкими допусками RSI. | `false` (Balanced) |
 | `ENABLE_NEWS` | Bool | Включает анализ новостного фона (требует NewsAPI). | `false` (если нет ключа) |
 | `SMART_SAMPLING` | Dict | Настройки сжатия исторических данных для ИИ. | `enabled: true` |

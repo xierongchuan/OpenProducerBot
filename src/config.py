@@ -79,6 +79,13 @@ def load_bot_config():
             "max_news_items": 10,
             "news_timeout_seconds": 30,
             "extract_full_content": True
+        },
+        "AGGRESSIVE_MODE": False,
+        "AGGRESSIVE_SETTINGS": {
+            "RSI_BUY_COND": 60,
+            "RSI_BUY_FORBIDDEN": 80,
+            "RSI_SELL_COND": 40,
+            "RSI_SELL_FORBIDDEN": 20
         }
     }
 
@@ -144,6 +151,7 @@ ENABLE_NEWS = BOT_CONFIG.get("ENABLE_NEWS", True)
 ENABLE_ADVANCED_ANALYSIS = BOT_CONFIG.get("ENABLE_ADVANCED_ANALYSIS", True)
 ENABLE_PARALLEL_PROCESSING = BOT_CONFIG.get("ENABLE_PARALLEL_PROCESSING", True)
 AGGRESSIVE_MODE = BOT_CONFIG.get("AGGRESSIVE_MODE", False)
+AGGRESSIVE_SETTINGS = BOT_CONFIG.get("AGGRESSIVE_SETTINGS", {})
 NEWS_SETTINGS = BOT_CONFIG.get("NEWS_SETTINGS", {})
 SMART_SAMPLING = BOT_CONFIG.get("SMART_SAMPLING", {"enabled": True, "recent_candles": 30, "history_step": 10})
 

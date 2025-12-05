@@ -124,7 +124,6 @@
   "ENABLE_NEWS": false,
   "ENABLE_ADVANCED_ANALYSIS": true,
   "ENABLE_PARALLEL_PROCESSING": true,
-  "AGGRESSIVE_MODE": false,
   "NEWS_SETTINGS": {
     "use_real_news": true,
     "provider": "newsapi",
@@ -141,5 +140,12 @@
     "provider": "siliconflow",
     "model": "deepseek-ai/DeepSeek-V3.2",
     "base_url": "https://api.siliconflow.com/v1/chat/completions"
+  },
+  "AGGRESSIVE_MODE": false,
+  "AGGRESSIVE_SETTINGS": {
+    "RSI_BUY_COND": 60,
+    "RSI_BUY_FORBIDDEN": 80,
+    "RSI_SELL_COND": 40,
+    "RSI_SELL_FORBIDDEN": 20
   }
 }

@@ -144,19 +144,38 @@ def should_call_ai(analysis):
     from src.config import AI_THRESHOLDS
     rsi_min = AI_THRESHOLDS.get("RSI_NEUTRAL_MIN", 45)
     rsi_max = AI_THRESHOLDS.get("RSI_NEUTRAL_MAX", 55)
+    rsi_overbought = AI_THRESHOLDS.get("RSI_OVERBOUGHT", 70)
+    rsi_oversold = AI_THRESHOLDS.get("RSI_OVERSOLD", 30)
+
+    # --- НОВЫЕ ПРОВЕРКИ ДЛЯ ЭКОНОМИИ ТОКЕНОВ ---
+    # Если Тренд UP, но RSI уже перекуплен -> Мы не будем покупать (поздно), а продавать против тренда нельзя.
+    # Значит, AI скажет HOLD. Экономим запрос.
+    if current_price > sma and rsi > rsi_overbought:
+        info(f"💤 {symbol}: Тренд UP, но RSI({rsi}) > {rsi_overbought} (Перекуплен) -> Пропуск ИИ (Auto-HOLD)")
+        return False
+
+    # Если Тренд DOWN, но RSI уже перепродан -> Мы не будем продавать (поздно), а покупать против тренда нельзя.
+    # Значит, AI скажет HOLD. Экономим запрос.
+    if current_price < sma and rsi < rsi_oversold:
+        info(f"💤 {symbol}: Тренд DOWN, но RSI({rsi}) < {rsi_oversold} (Перепродан) -> Пропуск ИИ (Auto-HOLD)")
+        return False
+    # -------------------------------------------
 
     if rsi_min <= rsi <= rsi_max:
-        from src.config import AGGRESSIVE_MODE
+        from src.config import AGGRESSIVE_MODE, AGGRESSIVE_SETTINGS
 
         # В Агрессивном режиме проверяем тренд
         if AGGRESSIVE_MODE:
+            rsi_buy_cond = AGGRESSIVE_SETTINGS.get("RSI_BUY_COND", 60)
+            rsi_sell_cond = AGGRESSIVE_SETTINGS.get("RSI_SELL_COND", 40)
+
             # Тренд ВВЕРХ (Цена > SMA) и RSI < 60 -> Возможен откат для покупки
-            if current_price > sma and rsi < 55:
+            if current_price > sma and rsi < rsi_buy_cond:
                 info(f"🔥 {symbol}: Агрессивный режим. Тренд UP + RSI={rsi} -> Вызываем ИИ (Поиск отката)")
                 return True
 
             # Тренд ВНИЗ (Цена < SMA) и RSI > 40 -> Возможен откат для продажи
-            if current_price < sma and rsi > 45:
+            if current_price < sma and rsi > rsi_sell_cond:
                 info(f"🔥 {symbol}: Агрессивный режим. Тренд DOWN + RSI={rsi} -> Вызываем ИИ (Поиск отката)")
                 return True
 

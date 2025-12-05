@@ -191,16 +191,16 @@ def analyze_symbol(symbol, position=None):
         """
 
     # Определяем стратегию в зависимости от настроек новостей и агрессивности
-    from src.config import TRADING_FEE, AGGRESSIVE_MODE
+    from src.config import TRADING_FEE, AGGRESSIVE_MODE, AGGRESSIVE_SETTINGS
     min_profit_breakeven = max(0.2, TRADING_FEE * 2.5)
     min_profit_partial = max(0.5, TRADING_FEE * 4.0)
 
     # Настройки порогов RSI в зависимости от режима
     if AGGRESSIVE_MODE:
-        rsi_buy_cond = 60
-        rsi_buy_forbidden = 80
-        rsi_sell_cond = 40
-        rsi_sell_forbidden = 20
+        rsi_buy_cond = AGGRESSIVE_SETTINGS.get("RSI_BUY_COND", 60)
+        rsi_buy_forbidden = AGGRESSIVE_SETTINGS.get("RSI_BUY_FORBIDDEN", 80)
+        rsi_sell_cond = AGGRESSIVE_SETTINGS.get("RSI_SELL_COND", 40)
+        rsi_sell_forbidden = AGGRESSIVE_SETTINGS.get("RSI_SELL_FORBIDDEN", 20)
         strategy_title = "АГРЕССИВНАЯ СТРАТЕГИЯ (AGGRESSIVE TREND FOLLOWING)"
         entry_desc = "Ищи возможности для входа по тренду. Допускаются входы при более высоком RSI, если тренд сильный."
     else:

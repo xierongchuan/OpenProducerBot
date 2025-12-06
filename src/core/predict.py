@@ -254,24 +254,9 @@ def process_analysis(analysis):
 
         # Check if it was an auto-fix rejection (detected by reason tag)
         if "[AUTO-FIX" in validated_prediction["reason"]:
-                reject_reason = validated_prediction["reason"].split("[AUTO-FIX:")[1].strip("]")
-                warning(f"⚠️ {analysis['symbol']}: Сигнал отклонен валидатором: {reject_reason}")
-
-                if attempt < max_retries:
-                    from src.config import MIN_RISK_REWARD_RATIO, AGGRESSIVE_MODE, AGGRESSIVE_SETTINGS
-                    # Re-calculate target RR for the message (or extract if I put it in reason string)
-                    target_rr_feedback = MIN_RISK_REWARD_RATIO
-                    if AGGRESSIVE_MODE:
-                        target_rr_feedback = AGGRESSIVE_SETTINGS.get("MIN_RISK_REWARD_RATIO", 1.0)
-
-                    # FEEDBACK LOOP: Update prompt and retry
-                    feedback = f"\n\n> [!IMPORTANT]\n> PREVIOUS RESPONSE REJECTED. REASON: {reject_reason}.\n> REQUIREMENT: Risk/Reward Ratio MUST be >= {target_rr_feedback} (Configured Limit).\n> Please adjust SL/TP to meet this target or just HOLD if risk is too high."
-                    current_prompt += feedback
-                    info(f"🔙 Добавляем фидбек в промпт и повторяем...")
-                    time.sleep(1)
-                    continue
-                else:
-                    info(f"🛑 Лимит попыток исчерпан. Оставляем HOLD.")
+            reject_reason = validated_prediction["reason"].split("[AUTO-FIX:")[1].strip("]")
+            warning(f"⚠️ {analysis['symbol']}: Сигнал скорректирован валидатором: {reject_reason}")
+            # We do not retry, just accept the correction (usually to HOLD)
 
         # If we got here, result is accepted (or it was already hold, or retries exhausted)
         final_prediction = validated_prediction
@@ -341,14 +326,15 @@ def validate_prediction(prediction, current_price, has_position=False):
 
     rr_ratio = reward / risk
 
-    if rr_ratio < target_rr:
-        warning(f"⚠️ Низкий Risk/Reward ({rr_ratio:.2f} < {target_rr}). Сигнал {action} отклонен.")
-        prediction["action"] = "hold"
-        prediction["reason"] += f" [AUTO-FIX: Low R/R ({rr_ratio:.2f} < {target_rr})]"
-        prediction["confidence"] = 0.0
-        # Rejected SL/TP -> Clear them to prevent execution of bad updates
-        prediction["stop_loss"] = None
-        prediction["take_profit"] = None
+    # Relaxed validation: Just log a warning if R/R is very low, but do not reject unless it's catastrophic (e.g. < 0.3)
+    # The user wants "normal" risk management, relying on the AI's judgment.
+
+    soft_limit = 0.5
+    if rr_ratio < soft_limit:
+        warning(f"⚠️ Низкий Risk/Reward ({rr_ratio:.2f}). AI считает это допустимым, но риск высок.")
+        # We DO NOT reject the signal, just log it.
+
+    # We accept the prediction as is.
 
     return prediction
 

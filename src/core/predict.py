@@ -148,17 +148,19 @@ def should_call_ai(analysis):
     rsi_oversold = AI_THRESHOLDS.get("RSI_OVERSOLD", 30)
 
     # --- НОВЫЕ ПРОВЕРКИ ДЛЯ ЭКОНОМИИ ТОКЕНОВ ---
-    # Если Тренд UP, но RSI уже перекуплен -> Мы не будем покупать (поздно), а продавать против тренда нельзя.
-    # Значит, AI скажет HOLD. Экономим запрос.
-    if current_price > sma and rsi > rsi_overbought:
-        info(f"💤 {symbol}: Тренд UP, но RSI({rsi}) > {rsi_overbought} (Перекуплен) -> Пропуск ИИ (Auto-HOLD)")
-        return False
+    from src.config import ENABLE_AI_SKIP_ON_RSI
+    if ENABLE_AI_SKIP_ON_RSI:
+        # Если Тренд UP, но RSI уже перекуплен -> Мы не будем покупать (поздно), а продавать против тренда нельзя.
+        # Значит, AI скажет HOLD. Экономим запрос.
+        if current_price > sma and rsi > rsi_overbought:
+            info(f"💤 {symbol}: Тренд UP, но RSI({rsi}) > {rsi_overbought} (Перекуплен) -> Пропуск ИИ (Auto-HOLD)")
+            return False
 
-    # Если Тренд DOWN, но RSI уже перепродан -> Мы не будем продавать (поздно), а покупать против тренда нельзя.
-    # Значит, AI скажет HOLD. Экономим запрос.
-    if current_price < sma and rsi < rsi_oversold:
-        info(f"💤 {symbol}: Тренд DOWN, но RSI({rsi}) < {rsi_oversold} (Перепродан) -> Пропуск ИИ (Auto-HOLD)")
-        return False
+        # Если Тренд DOWN, но RSI уже перепродан -> Мы не будем продавать (поздно), а покупать против тренда нельзя.
+        # Значит, AI скажет HOLD. Экономим запрос.
+        if current_price < sma and rsi < rsi_oversold:
+            info(f"💤 {symbol}: Тренд DOWN, но RSI({rsi}) < {rsi_oversold} (Перепродан) -> Пропуск ИИ (Auto-HOLD)")
+            return False
     # -------------------------------------------
 
     if rsi_min <= rsi <= rsi_max:

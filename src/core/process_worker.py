@@ -62,14 +62,14 @@ def run_symbol_pipeline(symbol: str):
                 plotter.plot_symbol(symbol, current_position=active_trade)
 
                 elapsed = time.time() - start_time
-                info(f"✅ [{symbol}] Цикл завершён за {elapsed:.2f} сек. Ожидание 20 сек...")
+                info(f"✅ [{symbol}] Цикл завершён за {elapsed:.2f} сек. Ожидание 2 сек...")
 
             except Exception as e:
                 error(f"❌ [{symbol}] Ошибка внутри торгового цикла: {str(e)}")
                 error(traceback.format_exc())
 
             # Пауза между циклами
-            time.sleep(20)
+            time.sleep(2)
 
     except Exception as e:
         # In case import fails or other init error

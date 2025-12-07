@@ -525,181 +525,153 @@ def analyze_symbol(symbol, position=None):
 """
 
     # === ФОРМИРУЕМ ОПТИМИЗИРОВАННЫЙ ПРОМПТ ===
-    prompt = f"""## РОЛЬ И ОГРАНИЧЕНИЯ
-Ты — алгоритмический торговый агент. Ты НЕ человек. Ты НЕ даёшь советы.
-Ты ПРИНИМАЕШЬ РЕШЕНИЕ и возвращаешь его в строгом JSON-формате.
+    prompt = f"""## РОЛЬ И ЗАДАЧА
+Ты — профессиональный алгоритм HFT-торговли (High Frequency Trading), специализирующийся на волатильных крипто-рынках.
+Твоя цель: Максимизация профита через захват сильных импульсов (Momentum) при разумном контроле рисков.
+Твой стиль: Активный, решительный, точный. Избегай чрезмерной осторожности ("passive trading"), если рынок дает явный сигнал.
 
-**КРИТИЧЕСКИЕ ОГРАНИЧЕНИЯ:**
-- Ты можешь анализировать ТОЛЬКО предоставленные данные
-- Ты НЕ имеешь доступа к внешним источникам
-- Ты НЕ можешь "думать" о том, что могло бы быть — только о том, что ЕСТЬ в данных
-- Если данных недостаточно для уверенного решения — action = "hold"
-
----
-
-## ТОРГОВЫЙ ИНСТРУМЕНТ
-| Параметр | Значение |
-|----------|----------|
-| Символ | {symbol} |
-| Биржа | {EXCHANGE.upper()} |
-| Таймфрейм | {current_interval} |
-| Леверидж | {LEVERAGE}x |
+**ТВОИ ПРИНЦИПЫ:**
+1. **Trend is King:** Не торгуй против сильного импульса.
+2. **Speed:** Входи в сделку немедленно при подтверждении условий.
+3. **Flexible Risk:** Используй ATR для адаптации стопов, не ставь их слишком близко в шумном рынке.
+4. **No Hallucinations:** Опирайся ТОЛЬКО на предоставленные цифры.
 
 ---
 
-## ТЕКУЩЕЕ СОСТОЯНИЕ ПОЗИЦИИ
+## 1. ТОРГОВЫЙ КОНТЕКСТ
+| Параметр | Значение | Детали |
+|----------|----------|--------|
+| Пары | {symbol} | Биржа: {EXCHANGE.upper()} |
+| Таймфрейм | {current_interval} | Леверидж: {LEVERAGE}x |
+| Режим | **{strategy_mode}** | {"🔥 АГРЕССИВНЫЙ" if strategy_mode == "AGGRESSIVE" else "🛡️ СБАЛАНСИРОВАННЫЙ"} |
+
 {position_block}
 {pnl_context}
 
 ---
 
-## РЫНОЧНЫЕ ДАННЫЕ
+## 2. АНАЛИЗ РЫНКА (DATA-DRIVEN)
 
-### Цена и базовые индикаторы
-| Параметр | Значение | Интерпретация |
-|----------|----------|---------------|
-| Текущая цена | {current_price:.2f} | — |
-| SMA({AI_THRESHOLDS.get('SMA_PERIOD', 20)}) | {sma:.2f} | {"Цена ВЫШЕ SMA → БЫЧИЙ контекст" if current_price > sma else "Цена НИЖЕ SMA → МЕДВЕЖИЙ контекст"} |
-| RSI({AI_THRESHOLDS.get('RSI_PERIOD', 14)}) | {rsi:.1f} | {rsi_interpretation} |
-| ATR(14) | {atr:.2f} | Средняя волатильность за период |
+### A. Ценовая структура
+| Метрика | Значение | Интерпретация алгоритма |
+|---------|----------|-------------------------|
+| Цена | {current_price:.2f} | Актуальная рыночная цена |
+| Тренд (Global) | {global_trend} | Цена относительно SMA({AI_THRESHOLDS.get('SMA_PERIOD', 20)}) |
+| Тренд (Local) | {local_trend} | EMA(9) vs EMA(21) |
+| RSI(14) | {rsi:.1f} | {rsi_interpretation} |
+| ATR(14) | {atr:.2f} | Текущая волатильность |
 
-### Трендовый контекст
-| Индикатор | Значение | Сигнал |
-|-----------|----------|--------|
-| EMA(9) | {ema9:.2f} | {"🟢 Быстрая выше медленной" if ema9 > ema21 else "🔴 Быстрая ниже медленной"} |
-| EMA(21) | {ema21:.2f} | — |
-| Глобальный тренд | {global_trend} | Цена {"выше" if global_trend == "UP" else "ниже"} SMA |
-| Локальный момент | {local_trend} | EMA crossover |
-| Консенсус трендов | {"✅ ДА" if trends_aligned else "⚠️ НЕТ"} | {"Оба тренда совпадают" if trends_aligned else "Тренды расходятся — высокий риск"} |
-| Последние 5 свечей | {last_5_direction} | {direction_desc} |
+### B. Сила импульса (Momentum)
+| Индикатор | Статус | Значение |
+|-----------|--------|----------|
+| Volume | {volume_status} | {volume_ratio:.2f}x от среднего |
+| Volatility | {volatility_status} | {volatility_ratio:.2f}x от ATR |
+| Candle Pattern | {last_5_direction} | {direction_desc} |
+| Consensus | {"✅ ПОДТВЕРЖДЕН" if trends_aligned else "⚠️ РАСХОЖДЕНИЕ"} | {"Сильный сигнал" if trends_aligned else "Повышенный риск"} |
 
-### Ключевые уровни
-| Тип | Уровень | Расстояние от цены |
-|-----|---------|-------------------|
-| Сопротивление | {resistance:.2f} | {resistance_dist_pct:.2f}% ⬆️ |
-| Поддержка | {support:.2f} | {support_dist_pct:.2f}% ⬇️ |
-| Pivot Point | {pivot:.2f} | {pivot_dist_pct:+.2f}% |
-
-### Объём и волатильность
-| Метрика | Значение | Статус |
-|---------|----------|--------|
-| Объём vs Avg(20) | {volume_ratio:.2f}x | {volume_status} |
-| Волатильность vs ATR | {volatility_ratio:.2f}x | {volatility_status} |
+### C. Ключевые уровни
+- **Сопротивление:** {resistance:.2f} (+{resistance_dist_pct:.2f}%)
+- **Поддержка:** {support:.2f} (-{support_dist_pct:.2f}%)
+- **Pivot Point:** {pivot:.2f} ({pivot_dist_pct:+.2f}%)
 
 ---
 
-## ИСТОРИЯ СВЕЧЕЙ (последние {len(candle_lines)})
+## 3. СТРАТЕГИЯ: MOMENTUM BREAKOUT ({strategy_mode})
+
+### ЛОГИКА ВХОДА (Decision Matrix)
+
+#### 🟢 SCENARIO: LONG (BUY)
+**Базовые условия (И/ИЛИ):**
+1. **Trend:** Цена > EMA9 > EMA21 (Идеально) ИЛИ Цена > SMA (Допустимо).
+2. **Setup:** Откат к EMA (Dip) ИЛИ Пробой уровня сопротивления.
+3. **RSI:** {35}-{rsi_long_max} (В тренде RSI может долго быть > 60 — это НОРМАЛЬНО для роста).
+4. **Volume:** Подтверждает движение (> {min_vol_ratio}x).
+
+**🚀 MOMENTUM OVERRIDE (Приоритет):**
+Если `Momentum Entry` = {"ВКЛЮЧЕН" if momentum_entry else "ВЫКЛЮЧЕН"} И последние {momentum_candles} свечи ЗЕЛЕНЫЕ с ростом объема — **ИГНОРИРУЙ** локальную перекупленность RSI (до {rsi_long_forbidden}). Входи по рынку!
+
+#### 🔴 SCENARIO: SHORT (SELL)
+**Базовые условия (И/ИЛИ):**
+1. **Trend:** Цена < EMA9 < EMA21 (Идеально) ИЛИ Цена < SMA (Допустимо).
+2. **Setup:** Откат к EMA (Rally) ИЛИ Пробой уровня поддержки.
+3. **RSI:** {rsi_short_min}-65 (В тренде RSI может долго быть < 40 — это НОРМАЛЬНО для падения).
+4. **Volume:** Подтверждает движение (> {min_vol_ratio}x).
+
+**🚀 MOMENTUM OVERRIDE (Приоритет):**
+Если `Momentum Entry` = {"ВКЛЮЧЕН" if momentum_entry else "ВЫКЛЮЧЕН"} И последние {momentum_candles} свечи КРАСНЫЕ с ростом объема — **ИГНОРИРУЙ** локальную перепроданность RSI (до {rsi_short_forbidden}). Входи по рынку!
+
+
+---
+
+### D. СПЕЦИАЛЬНЫЕ СИТУАЦИИ (REVERSAL & CORRECTIONS)
+
+#### 1. SHARP DROP & BOUNCE (V-Shape / Отскок)
+**Ситуация:** Резкое падение цены (Panic Dump) и RSI < 25 (или < 20).
+**Анализ:** Риск "продажи дна" (Selling the bottom).
+**Реакция:**
+- **НЕ ВХОДИ В SHORT**, если цена уже упала на > 2% за короткое время и RSI экстремально низок.
+- Ожидай **ОТСКОК (Bounce)** к EMA9/EMA21.
+- Если видишь разворотную свечу (Hammer/Pinbar) на высоком объеме -> Рассмотри **SCALP LONG** (Counter-trend).
+
+#### 2. FALSE BREAKOUT (Fakeout / Ложный пробой)
+**Ситуация:** Цена пробила Уровень (Support/Resistance), но свеча закрылась с длинным хвостом обратно за уровень.
+**Реакция:**
+- Это сигнал **НЕУДАВШЕГОСЯ ПРОБОЯ**.
+- Торгуй в ПРОТИВОПОЛОЖНУЮ сторону от пробоя (Reversal).
+- Stop Loss: Сразу за "хвостом" (экстремумом) ложного пробоя.
+
+#### 3. CORRECTION vs REVERSAL (Коррекция или Разворот?)
+**Ситуация:** Тренд идет вверх, но началась красная серия свечей.
+- **Healthy Correction:** Цена плавно опускается к EMA9/EMA21, Объем ПАДАЕТ. -> **HOLD LONG / BUY DIP**.
+- **Trend Reversal:** Цена резко пробивает EMA21 вниз на РАСТУЩЕМ объеме. -> **CLOSE LONG / SELL**.
+
+---
+
+## 4. РИСК-МЕНЕДЖМЕНТ (Расчеты)
+
+**Рекомендуемые параметры сделки (ADAPTIVE ATR):**
+
+| Тип | Stop Loss (SL) | Take Profit (TP) | Логика |
+|-----|----------------|------------------|--------|
+| **LONG** | ~{max(support - atr*0.5, current_price - atr*atr_sl_mult):.2f} | ~{min(resistance, current_price + atr*atr_tp_mult):.2f} | SL ниже локальной поддержки или ATR |
+| **SHORT**| ~{min(resistance + atr*0.5, current_price + atr*atr_sl_mult):.2f} | ~{max(support, current_price - atr*atr_tp_mult):.2f} | SL выше локального хая или ATR |
+
+*Ты можешь корректировать эти уровни, если видишь более сильные технические уровни в `History`.*
+
+---
+
+## 5. ИСТОРИЯ ЦЕН (Context)
 ```
-Time | Open | High | Low | Close | Vol | Body
+Time | Open | High | Low | Close | Vol | Pattern
 {candle_history}
 ```
-
----
-
-## СТРАТЕГИЯ: MOMENTUM BREAKOUT ({strategy_mode} MODE)
-
-### Фаза 1: ОПРЕДЕЛЕНИЕ КОНТЕКСТА
-| Сигнал | Статус | Интерпретация |
-|--------|--------|---------------|
-| Глобальный тренд | **{global_trend}** | Цена {">" if global_trend == "UP" else "<"} SMA |
-| Локальный момент | **{local_trend}** | EMA9 {">" if local_trend == "BULLISH" else "<"} EMA21 |
-| Тренды совпадают | **{"✅ ДА" if trends_aligned else "⚠️ НЕТ"}** | {"Высокая уверенность" if trends_aligned else "Торговать можно, но с осторожностью"} |
-| Последние {momentum_candles} свечи | **{last_5_direction}** | {direction_desc} |
-
-### Фаза 2: УСЛОВИЯ ВХОДА (AGGRESSIVE MODE)
-
-> **ВАЖНО**: В AGGRESSIVE режиме консенсус трендов {"ОБЯЗАТЕЛЕН" if trend_consensus_req else "НЕ обязателен"}.
-> {"Достаточно ОДНОГО трендового сигнала для входа (с пониженной confidence)." if not trend_consensus_req else ""}
-
-#### 🟢 LONG (BUY) — нужно 2/3 условий:
-1. **Тренд**: Цена > SMA **ИЛИ** EMA9 > EMA21 (любое одно)
-2. **RSI**: в диапазоне 35-{rsi_long_max} (широкий коридор)
-3. **Volume**: >= {min_vol_ratio}x от среднего
-
-**🚀 MOMENTUM ENTRY (альтернатива):**
-{"✅ ВКЛЮЧЕН" if momentum_entry else "❌ ВЫКЛЮЧЕН"} — Если последние {momentum_candles}+ свечей однонаправленные (бычьи) И RSI > 50 и растёт → валидный LONG даже без полного чек-листа.
-
-**🚫 HARD STOP LONG:**
-- RSI > {rsi_long_forbidden} — КРИТИЧЕСКАЯ перекупленность
-- Volume < 0.3x — МЁРТВЫЙ рынок
-
-#### 🔴 SHORT (SELL) — нужно 2/3 условий:
-1. **Тренд**: Цена < SMA **ИЛИ** EMA9 < EMA21 (любое одно)
-2. **RSI**: в диапазоне {rsi_short_min}-65 (широкий коридор)
-3. **Volume**: >= {min_vol_ratio}x от среднего
-
-**🚀 MOMENTUM ENTRY (альтернатива):**
-{"✅ ВКЛЮЧЕН" if momentum_entry else "❌ ВЫКЛЮЧЕН"} — Если последние {momentum_candles}+ свечей однонаправленные (медвежьи) И RSI < 50 и падает → валидный SHORT.
-
-**🚫 HARD STOP SHORT:**
-- RSI < {rsi_short_forbidden} — КРИТИЧЕСКАЯ перепроданность
-- Volume < 0.3x — МЁРТВЫЙ рынок
-
-### Фаза 3: УПРАВЛЕНИЕ ПОЗИЦИЕЙ (если ЕСТЬ открытая позиция)
-
-**Приоритет решений:**
-1. **CLOSE** — полное закрытие, если:
-   - Тренд развернулся (EMA crossover против позиции)
-   - RSI в экстремальной зоне против позиции
-   - PnL отрицательный И тренд против нас
-
-2. **CLOSE_PARTIAL (30-50%)** — частичная фиксация, если:
-   - PnL > {min_profit_partial:.1f}% (покрывает 3x комиссии)
-   - Цена приближается к сильному уровню
-
-3. **HOLD** — удерживать, если:
-   - Тренд сохраняется в нашу сторону
-   - PnL растёт или стабилен
-   - Нет признаков разворота
-
-### Фаза 4: РАСЧЁТ SL/TP
-
-**Для LONG:**
-- Stop Loss = max(Поддержка - ATR*0.5, Entry - ATR*{atr_sl_mult}) = ~{max(support - atr*0.5, current_price - atr*atr_sl_mult):.2f}
-- Take Profit = min(Сопротивление, Entry + ATR*{atr_tp_mult}) = ~{min(resistance, current_price + atr*atr_tp_mult):.2f}
-
-**Для SHORT:**
-- Stop Loss = min(Сопротивление + ATR*0.5, Entry + ATR*{atr_sl_mult}) = ~{min(resistance + atr*0.5, current_price + atr*atr_sl_mult):.2f}
-- Take Profit = max(Поддержка, Entry - ATR*{atr_tp_mult}) = ~{max(support, current_price - atr*atr_tp_mult):.2f}
-
-**Валидация SL/TP:**
-- Risk:Reward минимум 1:{min_rr}
-- StopLoss ПРОТИВ направления сделки
-- TakeProfit ПО направлению сделки
 {news_section}
----
-
-## HOLD_MINUTES (Рекомендуемое время удержания)
-| Параметр | Значение |
-|----------|----------|
-| ATR | {atr:.2f} |
-| Avg Move/Candle | {avg_move_per_candle:.4f} |
-| Interval | {interval_minutes} мин |
-| Расчётное время | ~{hold_minutes_est} мин |
-| Диапазон | {min_hold}-{max_hold} мин |
-
 ---
 
 ## ФОРМАТ ОТВЕТА
 
-Верни ТОЛЬКО валидный JSON без markdown-блоков, без комментариев:
+**CRITICAL INSTRUCTION:**
+Return **ONLY** valid JSON.
+DO NOT write "Here is the JSON...".
+DO NOT write "Evaluation...".
+DO NOT use markdown code blocks (```json ... ```).
+JUST THE RAW JSON OBJECT.
 
 {{
     "action": "buy" | "sell" | "close" | "close_partial" | "hold",
-    "confidence": <float 0.0-1.0, для buy/sell требуется >= {min_confidence}>,
-    "percentage": <float 0.1-1.0, ТОЛЬКО для close_partial>,
-    "stop_loss": <float, ОБЯЗАТЕЛЬНО для buy/sell>,
-    "take_profit": <float, ОБЯЗАТЕЛЬНО для buy/sell>,
-    "hold_minutes": <int {min_hold}-{max_hold}>,
-    "reason": "<макс 100 символов: [ACTION] потому что [КЛЮЧЕВОЙ ФАКТОР]>"
+    "confidence": float (0.0-1.0, threshold: {min_confidence}),
+    "percentage": float (0.3-1.0 for close_partial),
+    "stop_loss": float (Price),
+    "take_profit": float (Price),
+    "hold_minutes": int ({min_hold}-{max_hold}), // Recommended: ~{hold_minutes_est} min
+    "reason": "СТРОГО: [SETUP_TYPE] | [KEY_REASON] | [RISK_LEVEL]"
 }}
 
-**Валидация перед ответом:**
-1. action из списка: buy, sell, close, close_partial, hold
-2. confidence: 0.0-1.0 (buy/sell требуют >= {min_confidence})
-3. stop_loss < current_price для BUY, > current_price для SELL
-4. take_profit > current_price для BUY, < current_price для SELL
-5. hold_minutes: {min_hold}-{max_hold}
+
+Пример reason:
+- "Momentum Breakout | 3 Green Candles + Vol Surge | Risk: Low"
+- "Trend Pullback | EMA9 Support Rejection | Risk: Medium"
+- "Hold | Choppy Market, No Clear Trend | Risk: High"
 """
 
     return {

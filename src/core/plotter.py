@@ -13,7 +13,7 @@ try:
 except ImportError:
     PANDAS_AVAILABLE = False
 
-from src.config import DATA_DIR, CHARTS_DIR, PLOTTER_RANGES, DEFAULT_PLOTTER_RANGE, CLEANUP_SETTINGS, SYMBOLS, AI_THRESHOLDS
+from src.config import DATA_DIR, CHARTS_DIR, PLOTTER_RANGES, DEFAULT_PLOTTER_RANGE, CLEANUP_SETTINGS, SYMBOLS, AI_THRESHOLDS, AGGRESSIVE_MODE
 from src.utils.logger import info, error
 from src.utils.helpers import get_filename
 
@@ -353,7 +353,38 @@ def plot_symbol(symbol, time_range=None, current_position=None):
             info(f"⚠️ Ошибка отображения позиции на графике: {e}")
 
     # Оформление графика цены
-    ax1.set_title(f"{symbol} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({time_range})", fontsize=20, pad=20)
+    ax1.set_title(f"{symbol} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({time_range})", fontsize=20, pad=40)
+
+    # --- STATUS BADGES ---
+    # 1. Trading Mode Badge
+    mode_text = "MODE: AGGRESSIVE" if AGGRESSIVE_MODE else "MODE: NORMAL"
+    mode_color = '#ff6d00' if AGGRESSIVE_MODE else '#2962ff' # Orange vs Blue
+
+    # Place ABOVE the chart (y > 1.0) to align with title and avoid overlap
+    ax1.text(0.0, 1.02, mode_text, transform=ax1.transAxes,
+             fontsize=10, fontweight='bold', color='white',
+             verticalalignment='bottom', horizontalalignment='left',
+             bbox=dict(boxstyle='round,pad=0.3', facecolor=mode_color, alpha=0.9, edgecolor='none'))
+
+    # 2. Position Status Badge
+    pos_text = "NO POSITION"
+    pos_color = '#757575' # Gray
+
+    if current_position and current_position.get("status") == "OPEN":
+        side = current_position.get("side", "UNKNOWN").upper()
+        if side == "LONG":
+            pos_text = f"POS: LONG"
+            pos_color = '#00c853' # Green
+        elif side == "SHORT":
+            pos_text = f"POS: SHORT"
+            pos_color = '#d50000' # Red
+
+    # Place next to Mode badge (offset x)
+    ax1.text(0.25, 1.02, pos_text, transform=ax1.transAxes,
+             fontsize=10, fontweight='bold', color='white',
+             verticalalignment='bottom', horizontalalignment='left',
+             bbox=dict(boxstyle='round,pad=0.3', facecolor=pos_color, alpha=0.9, edgecolor='none'))
+    # ---------------------
     ax1.set_ylabel("Цена", fontsize=14, labelpad=10)
     ax1.legend(fontsize=12, loc='upper left')
     ax1.grid(alpha=0.2)

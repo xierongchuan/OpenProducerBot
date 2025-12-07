@@ -32,7 +32,7 @@ def run_chart_worker():
     info(f"🎨 [ChartWorker] Process started (PID: {os.getpid()})")
 
     # Configuration
-    UPDATE_INTERVAL = 5 # seconds
+    UPDATE_INTERVAL = 10 # seconds
 
     # 3. Parallel Execution Setup
     if ENABLE_PARALLEL_PROCESSING:

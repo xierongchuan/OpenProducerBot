@@ -141,7 +141,7 @@
   "ENABLE_AI_SKIP_ON_RSI": false,
   "AI_SETTINGS": {
     "provider": "openrouter",
-    "model": "deepseek/deepseek-chat",
+    "model": "x-ai/grok-4.1-fast",
     "base_url": "https://openrouter.ai/api/v1/chat/completions"
   },
   "AGGRESSIVE_MODE": false,

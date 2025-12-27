@@ -503,89 +503,108 @@ def analyze_symbol(symbol, position=None):
 **ВАЖНО**: Новости — вторичный фактор. Технический анализ имеет приоритет.
 """
 
+    # === DYNAMIC STRATEGY SELECTION ===
+    # AI Logic Optimization:
+    # Don't send "Pullback" instructions if the market is skyrocketing (Momentum).
+    # Don't send "Momentum" instructions if the market is sleeping (Pullback).
+
+    # 1. Determine Primary Context
+    is_high_volume = volume_ratio > 1.2
+    is_momentum_market = is_high_volume or momentum_candles_detected
+
+    strategy_section = ""
+
+    if is_momentum_market:
+        # === MOMENTUM ONLY ===
+        strategy_section = f"""
+## 3. СТРАТЕГИЯ: 🔥 MOMENTUM BREAKOUT (ПРОБОЙ)
+*Контекст: Рынок активен (Vol={volume_ratio:.2f}x), возможен сильный импульс.*
+
+**Твоя Задача:**
+Ищи точки входа на **ПРОБОЙ** уровней или продолжение сильного движения.
+
+**Условия входа (LONG):**
+1.  **Trend:** Сильный аптренд.
+2.  **Volume:** 🔼 ВЫСОКИЙ (> 1.2x). Подтверждает силу движения.
+3.  **Momentum Override:** Игнорируй RSI > 70 ({rsi:.1f}), если видишь серию зеленых свечей и пробой уровня.
+4.  **Target:** Быстрое движение. Используй трейлинг.
+
+**Условия входа (SHORT):**
+1.  **Trend:** Сильный даунтренд.
+2.  **Volume:** 🔼 ВЫСОКИЙ.
+3.  **Momentum Override:** Игнорируй RSI < 30 ({rsi:.1f}), если видишь серию красных свечей и пробой поддержки.
+"""
+    else:
+         # === PULLBACK ONLY ===
+        strategy_section = f"""
+## 3. СТРАТЕГИЯ: ⚓ EMA PULLBACK (ОТКАТ)
+*Контекст: Рынок спокойный (Vol={volume_ratio:.2f}x), работаем от коррекций.*
+
+**Твоя Задача:**
+Ищи точки входа на **ОТКАТЕ** к средним (EMA), чтобы войти по тренду по лучшей цене. НЕ торгуй пробои (ложные).
+
+**Условия входа (LONG):**
+1.  **Trend:** Общий тренд вверх, но локально цена снижается.
+2.  **Setup:** Цена касается **EMA9** или **EMA21**.
+3.  **Volume:** 🔽 НИЗКИЙ/ПАДАЕТ. Это "здоровая" коррекция.
+4.  **RSI:** Нейтральный (40-60). Остыл после роста.
+5.  **Trigger:** Свеча начинает "отскакивать" от средней.
+
+**Условия входа (SHORT):**
+1.  **Trend:** Общий тренд вниз, цена растет к EMA.
+2.  **Setup:** Касание EMA9/21 снизу.
+3.  **Volume:** Низкий на росте.
+"""
+
     # === ФОРМИРУЕМ ОПТИМИЗИРОВАННЫЙ ПРОМПТ ===
     prompt = f"""## РОЛЬ И ЗАДАЧА
-Ты — профессиональный алгоритм HFT-торговли (High Frequency Trading), специализирующийся на волатильных крипто-рынках.
-Твоя цель: Максимизация профита через захват сильных импульсов (Momentum) при разумном контроле рисков.
-Твой стиль: Активный, решительный, точный. Избегай чрезмерной осторожности ("passive trading"), если рынок дает явный сигнал.
-
+Ты — профессиональный алгоритм HFT-торговли.
+Цель: Максимизация профита через захват движений.
+Стиль: **{STRATEGY_STYLE}** ({style_desc}).
 
 **ТВОИ ПРИНЦИПЫ:**
 1.  **Trend is King:** Не торгуй против сильного импульса.
-2.  **Let Winners Run:** НИКОГДА не закрывай прибыльную сделку рано, если тренд не сломан. Игнорируй RSI > 70/80 в сильном тренде.
-3.  **Trailing Stop:** Вместо тейк-профита старайся двигать Stop Loss вслед за ценой.
-4.  **Speed:** Входи в сделку немедленно при подтверждении условий.
-5.  **No Hallucinations:** Опирайся ТОЛЬКО на предоставленные цифры.
+2.  **No Hallucinations:** Опирайся ТОЛЬКО на цифры ниже.
+3.  **Risk/Reward:** Минимум {MIN_RISK_REWARD_RATIO}.
 
 ---
 
 ## 1. ТОРГОВЫЙ КОНТЕКСТ
-| Параметр | Значение | Детали |
-|----------|----------|--------|
-| Пары | {symbol} | Биржа: {EXCHANGE.upper()} |
-| Таймфрейм | {current_interval} | Леверидж: {LEVERAGE}x |
-| Стиль | **{STRATEGY_STYLE}** | {style_desc} |
-| Режим | **{strategy_mode}** | {"🔥 АГРЕССИВНЫЙ" if strategy_mode == "AGGRESSIVE" else "🛡️ СБАЛАНСИРОВАННЫЙ"} |
+| Параметр | Значение |
+|----------|----------|
+| Пары | {symbol} |
+| Таймфрейм | {current_interval} |
+| Стиль | **{STRATEGY_STYLE}** |
+| Режим | **{strategy_mode}** |
 
 {position_block}
 {pnl_context}
 
 ---
 
-## 2. АНАЛИЗ РЫНКА (DATA-DRIVEN)
+## 2. АНАЛИЗ РЫНКА
+### A. Индикаторы
+| Метрика | Значение |
+|---------|----------|
+| Цена | {current_price:.2f} |
+| Тренд (Global) | {global_trend} |
+| Тренд (Local) | {local_trend} |
+| RSI(14) | {rsi:.1f} |
+| ATR(14) | {atr:.2f} |
 
-### A. Ценовая структура
-| Метрика | Значение | Интерпретация алгоритма |
-|---------|----------|-------------------------|
-| Цена | {current_price:.2f} | Актуальная рыночная цена |
-| Тренд (Global) | {global_trend} | Цена относительно SMA({AI_THRESHOLDS.get('SMA_PERIOD', 20)}) |
-| Тренд (Local) | {local_trend} | EMA(9) vs EMA(21) |
-| RSI(14) | {rsi:.1f} | {rsi_interpretation} |
-| ATR(14) | {atr:.2f} | Текущая волатильность |
-
-### B. Сила импульса (Momentum)
+### B. Импульс
 | Индикатор | Статус | Значение |
 |-----------|--------|----------|
-| Volume | {volume_status} | {volume_ratio:.2f}x от среднего |
-| Volatility | {volatility_status} | {volatility_ratio:.2f}x от ATR |
-| Candle Pattern | {last_5_direction} | {direction_desc} |
-| Consensus | {"✅ ПОДТВЕРЖДЕН" if trends_aligned else "⚠️ РАСХОЖДЕНИЕ"} | {"Сильный сигнал" if trends_aligned else "Повышенный риск"} |
+| Volume | {volume_status} | {volume_ratio:.2f}x |
+| Pattern | {last_5_direction} | {direction_desc} |
 
-### C. Ключевые уровни
-- **Сопротивление:** {resistance:.2f} (+{resistance_dist_pct:.2f}%)
-- **Поддержка:** {support:.2f} (-{support_dist_pct:.2f}%)
-- **Pivot Point:** {pivot:.2f} ({pivot_dist_pct:+.2f}%)
+### C. Уровни
+- **Resistance:** {resistance:.2f} (+{resistance_dist_pct:.2f}%)
+- **Support:** {support:.2f} (-{support_dist_pct:.2f}%)
 
 ---
 
-## 3. ВЫБОР СТРАТЕГИИ (Decision Matrix)
-
-Ты должен выбрать ОДНУ из двух стратегий в зависимости от рынка:
-
-### � STRATEGY A: MOMENTUM BREAKOUT (Пробой импульса)
-*Используй, когда рынок летит на объемах.*
-**Условия входа (LONG):**
-1.  **Trend:** Сильный аптренд.
-2.  **Setup:** Пробой сопротивления или обновление хая.
-3.  **Volume:** 🔼 РАСТЁТ (> 1.2x). Это топливо пробоя.
-4.  **RSI:** 50-75 (Может быть высоким).
-5.  **Momentum Override:** Если `Momentum Entry` = ВКЛЮЧЕН и есть серия из {momentum_candles} зеленых свечей -> ИГНОРИРУЙ RSI до {rsi_long_forbidden}.
-
-### ⚓ STRATEGY B: EMA PULLBACK (Откат к средней)
-*Используй, когда тренд берет паузу (коррекция).*
-**Условия входа (LONG):**
-1.  **Trend:** Аптренд сохраняется (EMA9 > EMA21), но цена снижается.
-2.  **Setup:** Цена касается (или близка) к **EMA9** или **EMA21**.
-3.  **Volume:** 🔽 ПАДАЕТ или Низкий (< 1.0x). Это "здоровая" коррекция без паники.
-4.  **RSI:** 40-55 (Остыл, но не ушел в медвежью зону < 40).
-5.  **Trigger:** Свеча начинает отскакивать от EMA (тень снизу).
-
----
-
-### SCENARIO: SHORT (Зеркально)
-- **Breakout Short:** Пробой поддержки, Высокий объем, RSI низкий (но падает), Momentum Override (серия красных свечей).
-- **Pullback Short:** Откат вверх к EMA9/21, Низкий объем, RSI 45-60 (остыл), Отскок вниз от EMA.
-
+{strategy_section}
 
 ---
 

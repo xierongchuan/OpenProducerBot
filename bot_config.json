@@ -163,5 +163,31 @@
     "momentum_entry_enabled": true,
     "momentum_consecutive_candles": 3
   },
-  "STRATEGY_STYLE": "INTRADAY"
+  "STRATEGY_STYLE": "INTRADAY",
+  "STYLE_PRESETS": {
+    "SCALP": {
+      "timeframe": "1m",
+      "chart_period": "6h",
+      "loop_interval": 3,
+      "atr_sl_mult": 1.5,
+      "atr_tp_mult": 2.0,
+      "description": "High frequency, small moves, strict exits."
+    },
+    "INTRADAY": {
+      "timeframe": "5m",
+      "chart_period": "1D",
+      "loop_interval": 60,
+      "atr_sl_mult": 2.0,
+      "atr_tp_mult": 3.0,
+      "description": "Day trading, capturing daily trends."
+    },
+    "SWING": {
+      "timeframe": "15m",
+      "chart_period": "3D",
+      "loop_interval": 900,
+      "atr_sl_mult": 3.0,
+      "atr_tp_mult": 5.0,
+      "description": "Multi-day holding, wider stops for volatility."
+    }
+  }
 }

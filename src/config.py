@@ -173,7 +173,8 @@ MOMENTUM_STRATEGY = BOT_CONFIG.get("MOMENTUM_STRATEGY", {
 STRATEGY_STYLE = BOT_CONFIG.get("STRATEGY_STYLE", "INTRADAY")  # Default to INTRADAY
 
 # Presets for different styles (Can be overridden by bot_config.json if keys exist there)
-STYLE_PRESETS = {
+# Presets for different styles (Can be overridden by bot_config.json if keys exist there)
+DEFAULT_STYLE_PRESETS = {
     "SCALP": {
         "timeframe": "1m",
         "chart_period": "6h",
@@ -199,6 +200,7 @@ STYLE_PRESETS = {
         "description": "Multi-day holding, wider stops for volatility."
     }
 }
+STYLE_PRESETS = BOT_CONFIG.get("STYLE_PRESETS", DEFAULT_STYLE_PRESETS)
 
 # Apply style preset if values are missing in specific configs
 current_preset = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS["INTRADAY"])

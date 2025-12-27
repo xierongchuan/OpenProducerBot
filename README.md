@@ -6,7 +6,7 @@
 
 **OpenProducer** - это профессиональная автоматизированная торговая система, разработанная для торговли криптовалютными фьючерсами на бирже **BingX** (Standard & VST Futures).
 
-Система использует передовые модели искусственного интеллекта (**DeepSeek AI**) для принятия торговых решений, комбинируя классический технический анализ с анализом рыночной структуры, психологии толпы и управлением рисками.
+Система использует передовые модели искусственного интеллекта (**DeepSeek**, **Grok**, **Claude** через **OpenRouter**) для принятия торговых решений, комбинируя классический технический анализ с анализом рыночной структуры, психологии толпы и управлением рисками.
 
 ---
 
@@ -39,7 +39,7 @@
 ## <a id="features"></a>🚀 Ключевые возможности
 
 ### 🧠 Интеллектуальный анализ
-*   **Dual AI Core**: Поддержка **DeepSeek Official API** и **SiliconFlow API** для максимальной надежности и гибкости.
+*   **Multi-Model AI Core**: Поддержка **DeepSeek**, **Grok**, **Claude** и других моделей через единый интерфейс (OpenRouter/SiliconFlow). Гибкое переключение между моделями без изменения кода.
 *   **Психология рынка**: Оценивает, кто контролирует рынок (быки/медведи), ищет признаки "ловушек" и панических продаж.
 *   **Smart Sampling**: Умное сжатие исторических данных (до 1000+ свечей) в компактный контекст для ИИ, сохраняя важные экстремумы и объемы.
 *   **Smart Skip**: Пропускает очевидно нейтральные рынки (флэт), экономя API токены и снижая шум.
@@ -136,12 +136,10 @@
     BINGX_API_KEY="ваш_публичный_ключ"
     BINGX_SECRET_KEY="ваш_секретный_ключ"
 
-    # DeepSeek API (для мозга бота)
-    DEEPSEEK_API_KEY="ваш_ключ_deepseek"
-    # ИЛИ SiliconFlow API (альтернативный провайдер)
-    SILICONFLOW_API_KEY="ваш_ключ_siliconflow"
-    # ИЛИ OpenRouter API
-    OPENROUTER_API_KEY="ваш_ключ_openrouter"
+    # AI Provider Keys (заполните один из них)
+    OPENROUTER_API_KEY="ваш_ключ_openrouter"      # Рекомендуется (Grok, Claude, DeepSeek)
+    DEEPSEEK_API_KEY="ваш_ключ_deepseek"          # DeepSeek Direct
+    SILICONFLOW_API_KEY="ваш_ключ_siliconflow"    # SiliconFlow
 
     # Режим работы
     # "demo" = VST Futures (Виртуальные деньги BingX)
@@ -228,7 +226,7 @@
 
 ### 🤖 Настройка AI Провайдера
 
-Вы можете выбрать источник API для DeepSeek: официальный API, SiliconFlow или OpenRouter.
+Система поддерживает работу через **OpenRouter**, **DeepSeek Official API** или **SiliconFlow**.
 
 ```json
   "AI_SETTINGS": {
@@ -238,12 +236,12 @@
   }
 ```
 
-*   **provider**: `"deepseek"`, `"siliconflow"`, или `"openrouter"`.
-*   **model**: Имя модели (для OpenRouter: `"deepseek/deepseek-chat"`).
+*   **provider**: `"openrouter"` (рекомендуется), `"deepseek"`, или `"siliconflow"`.
+*   **model**: Имя модели (например: `"deepseek/deepseek-chat"` для OpenRouter, `"x-ai/grok-2-vision-1212"` для Grok и т.д.).
 *   **base_url**: URL для API.
 
 > [!TIP]
-> Для OpenRouter используйте `OPENROUTER_API_KEY` в `.env`. Для SiliconFlow - `SILICONFLOW_API_KEY`.
+> Для OpenRouter используйте `OPENROUTER_API_KEY` в `.env`. Для других провайдеров - соответствующие ключи.
 
 ---
 
@@ -315,9 +313,9 @@ tail -f data/trades.log
 *   Проверьте правильность `BINGX_API_KEY` и `BINGX_SECRET_KEY` в `.env`.
 *   Убедитесь, что системное время на сервере синхронизировано.
 
-### Ошибка `DeepSeek API Error`
-*   Закончились токены на балансе DeepSeek.
-*   API недоступен (проверьте статус DeepSeek).
+### Ошибка `AI Provider Error`
+*   Закончились кредиты на балансе (OpenRouter/DeepSeek/SiliconFlow).
+*   API недоступен или модель перегружена (проверьте статус провайдера).
 
 ---
 

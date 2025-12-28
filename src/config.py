@@ -179,8 +179,9 @@ DEFAULT_STYLE_PRESETS = {
     "SCALP": {
         "timeframe": "1m",
         "chart_period": "6h",
+        "plotter_period": "4h",
         "loop_interval": 3, # Fast reaction search
-        "position_check_interval": 2, # Active monitoring
+        "position_check_interval": 3, # Quick check (3s)
         "atr_sl_mult": 1.5,
         "atr_tp_mult": 2.0,
         "description": "High frequency, small moves, strict exits."
@@ -188,8 +189,9 @@ DEFAULT_STYLE_PRESETS = {
     "INTRADAY": {
         "timeframe": "5m",
         "chart_period": "1D",
+        "plotter_period": "12h",
         "loop_interval": 60, # Standard search
-        "position_check_interval": 10, # Active monitoring (Relaxed slightly)
+        "position_check_interval": 10, # Balanced monitoring (10s)
         "atr_sl_mult": 2.0,
         "atr_tp_mult": 3.0,
         "description": "Day trading, capturing daily trends."
@@ -197,8 +199,9 @@ DEFAULT_STYLE_PRESETS = {
     "SWING": {
         "timeframe": "15m", # or 1h
         "chart_period": "3D",
+        "plotter_period": "1D",
         "loop_interval": 900, # Relaxed search (15m)
-        "position_check_interval": 30, # Relaxed monitoring (30s)
+        "position_check_interval": 60, # Relaxed monitoring (1m)
         "atr_sl_mult": 3.0,
         "atr_tp_mult": 5.0,
         "description": "Multi-day holding, wider stops for volatility."
@@ -225,15 +228,22 @@ def parse_interval_minutes(interval_str):
     return value
 
 # 1. Override DEFAULT_CHART_RANGE based on Style Preset
-# (If user didn't explicitly override it in local config, or we want to enforce consistency)
 target_chart_period = current_preset.get("chart_period")
 if target_chart_period and target_chart_period in CHART_RANGES:
     if DEFAULT_CHART_RANGE != target_chart_period:
         print(f"🔄 Auto-adjusted CHART_RANGE to {target_chart_period} for {STRATEGY_STYLE} style")
         DEFAULT_CHART_RANGE = target_chart_period
-        BOT_CONFIG["DEFAULT_CHART_RANGE"] = target_chart_period # Consistent update
+        BOT_CONFIG["DEFAULT_CHART_RANGE"] = target_chart_period
 
-# 2. Auto-calculate Smart Sampling Step
+# 2. Override DEFAULT_PLOTTER_RANGE base on Style Preset
+target_plotter_period = current_preset.get("plotter_period")
+if target_plotter_period and target_plotter_period in PLOTTER_RANGES:
+     if DEFAULT_PLOTTER_RANGE != target_plotter_period:
+        print(f"🔄 Auto-adjusted PLOTTER_RANGE to {target_plotter_period} for {STRATEGY_STYLE} style")
+        DEFAULT_PLOTTER_RANGE = target_plotter_period
+        BOT_CONFIG["DEFAULT_PLOTTER_RANGE"] = target_plotter_period
+
+# 3. Auto-calculate Smart Sampling Step
 # We want the AI to see 'target_timeframe' candles (e.g. 15m), but we download 'base_interval' candles (e.g. 5m)
 chart_config = CHART_RANGES.get(DEFAULT_CHART_RANGE, {})
 base_interval_str = chart_config.get("interval", "1m")
@@ -242,18 +252,23 @@ target_timeframe_str = current_preset.get("timeframe", "1m")
 base_minutes = parse_interval_minutes(base_interval_str)
 target_minutes = parse_interval_minutes(target_timeframe_str)
 
+# Force enable Smart Sampling if we need it for aggregation
+if target_minutes > base_minutes:
+     if not SMART_SAMPLING.get("enabled", True):
+          print(f"🔄 Force-enabling Smart Sampling for aggregation ({base_interval_str} -> {target_timeframe_str})")
+          SMART_SAMPLING["enabled"] = True
+
 if SMART_SAMPLING.get("enabled", True):
     # Calculate optimal step to simulate target timeframe
-    # Example: Base=5m, Target=15m -> Step=3
     optimal_step = max(1, target_minutes // base_minutes)
 
     current_step = SMART_SAMPLING.get("history_step", 1)
+    # Always overwrite with optimal step to ensure correctness
     if current_step != optimal_step:
          print(f"🔄 Auto-adjusted Smart Sampling step to {optimal_step} (Target: {target_timeframe_str}, Base: {base_interval_str})")
-         SMART_SAMPLING["history_step"] = optimal_step
+    SMART_SAMPLING["history_step"] = optimal_step
 
 
-# DeepSeek / AI API Settings
 # DeepSeek / AI API Settings
 AI_SETTINGS = BOT_CONFIG.get("AI_SETTINGS", {})
 AI_PROVIDER = AI_SETTINGS.get("provider", "deepseek_official")

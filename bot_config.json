@@ -111,14 +111,6 @@
       "interval": "1h"
     }
   },
-  "DEFAULT_CHART_RANGE": "12h",
-  "DEFAULT_PLOTTER_RANGE": "2h",
-  "CLEANUP_SETTINGS": {
-    "cleanup_old_charts": true,
-    "charts_retention_days": 7,
-    "cleanup_old_data": true,
-    "data_retention_days": 30
-  },
   "ENABLE_NEWS": false,
   "ENABLE_ADVANCED_ANALYSIS": true,
   "ENABLE_PARALLEL_MODE": true,
@@ -128,11 +120,6 @@
     "max_news_items": 15,
     "news_timeout_seconds": 30,
     "extract_full_content": true
-  },
-  "SMART_SAMPLING": {
-    "enabled": true,
-    "recent_candles": 30,
-    "history_step": 10
   },
   "ENABLE_AI_SKIP_ON_RSI": false,
   "AI_SETTINGS": {
@@ -159,12 +146,14 @@
     "momentum_entry_enabled": true,
     "momentum_consecutive_candles": 3
   },
-  "STRATEGY_STYLE": "SWING",
+  "STRATEGY_STYLE": "INTRADAY",
   "STYLE_PRESETS": {
     "SCALP": {
       "timeframe": "1m",
       "chart_period": "6h",
+      "plotter_period": "4h",
       "loop_interval": 3,
+      "position_check_interval": 3,
       "atr_sl_mult": 1.5,
       "atr_tp_mult": 2.0,
       "description": "High frequency, small moves, strict exits."
@@ -172,7 +161,9 @@
     "INTRADAY": {
       "timeframe": "5m",
       "chart_period": "1D",
+      "plotter_period": "12h",
       "loop_interval": 60,
+      "position_check_interval": 10,
       "atr_sl_mult": 2.0,
       "atr_tp_mult": 3.0,
       "description": "Day trading, capturing daily trends."
@@ -180,7 +171,9 @@
     "SWING": {
       "timeframe": "15m",
       "chart_period": "3D",
+      "plotter_period": "1D",
       "loop_interval": 900,
+      "position_check_interval": 60,
       "atr_sl_mult": 3.0,
       "atr_tp_mult": 5.0,
       "description": "Multi-day holding, wider stops for volatility."

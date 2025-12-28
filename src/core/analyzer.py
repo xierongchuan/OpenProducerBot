@@ -160,10 +160,135 @@ def calculate_support_resistance(prices, window=20):
         "resistances": sorted(list(set(resistances)))
     }
 
+def calculate_sma_series(values, period):
+    """Calculates SMA series for a list of values."""
+    if len(values) < period:
+        return [0] * len(values)
+
+    sma_values = []
+    # Pad finding initial SMA
+    pass_len = len(values)
+
+    # Efficient rolling sum
+    # First `period` are 0 or partial (we just use 0 padding for alignment simplicity)
+    sma_values = [0] * (period - 1)
+
+    # Calculate initial window
+    current_sum = sum(values[:period])
+    sma_values.append(current_sum / period)
+
+    # Rolling
+    for i in range(period, pass_len):
+        current_sum = current_sum - values[i-period] + values[i]
+        sma_values.append(current_sum / period)
+
+    return sma_values
+
+def calculate_rsi_series(prices, period=14):
+    """Calculates RSI series."""
+    if len(prices) < period + 1:
+        return [50.0] * len(prices)
+
+    rsi_values = [50.0] * len(prices) # Default 50
+
+    gains = []
+    losses = []
+
+    # Calculate changes
+    deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+
+    # First Average Gain/Loss
+    if len(deltas) < period:
+        return rsi_values
+
+    # Initial avg
+    seed_gains = [d for d in deltas[:period] if d > 0]
+    seed_losses = [-d for d in deltas[:period] if d < 0]
+
+    avg_gain = sum(seed_gains) / period
+    avg_loss = sum(seed_losses) / period
+
+    # First RSI at index `period`
+    if avg_loss == 0:
+        rs = 100
+        first_rsi = 100
+    else:
+        rs = avg_gain / avg_loss
+        first_rsi = 100 - (100 / (1 + rs))
+
+    rsi_values[period] = first_rsi
+
+    # Smoothing
+    for i in range(period + 1, len(prices)):
+        delta = prices[i] - prices[i-1]
+        gain = delta if delta > 0 else 0
+        loss = -delta if delta < 0 else 0
+
+        avg_gain = (avg_gain * (period - 1) + gain) / period
+        avg_loss = (avg_loss * (period - 1) + loss) / period
+
+        if avg_loss == 0:
+            rsi = 100
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+
+        rsi_values[i] = rsi
+
+    return rsi_values
+
+def calculate_seb_series(prices, length=20, mult=2.0):
+    """
+    Calculates Standard Error Bands (Linear Regression + StdErr) for the END of the series only,
+    but returns arrays populated with the LAST regression line values for visualization purposes
+    OR calculates rolling SEB if we want TRUE history (expensive).
+
+    For the AI Prompt, user wants to see what the bands were AT THAT TIME?
+    Or where the current bands lie?
+    Usually -> Band Value AT THAT MOMENT. That requires Rolling Linear Regression.
+
+    Simplification for performance: We will implement Rolling Linear Regression.
+    """
+    import numpy as np
+
+    n = len(prices)
+    linreg_series = [0.0] * n
+    upper_series = [0.0] * n
+    lower_series = [0.0] * n
+
+    if n < length:
+        return linreg_series, upper_series, lower_series
+
+    prices_arr = np.array(prices)
+    x = np.arange(length)
+
+    # Rolling calculation
+    # Ideally should use efficient algo, but loop is fine for < 1000 candles
+    for i in range(length, n + 1):
+        # Window: prices_arr[i-length : i]
+        y = prices_arr[i-length : i]
+
+        # Linreg for this window. We only need the ENDPOINT value (at x = length-1) to plot the current 'live' value
+        # Coeffs
+        m, c = np.polyfit(x, y, 1) # polyfit is slightly faster/easier than lstsq for 1D
+
+        # Value at the last point of window
+        reg_val = m * (length - 1) + c
+
+        # Std Err
+        residuals = y - (m * x + c)
+        std_err = np.sqrt(np.sum(residuals**2) / (length - 2))
+
+        linreg_series[i-1] = reg_val
+        upper_series[i-1] = reg_val + (mult * std_err)
+        lower_series[i-1] = reg_val - (mult * std_err)
+
+    return linreg_series, upper_series, lower_series
+
 def calculate_seb(prices, length=20, mult=2.0):
     """
-    Calculates Standard Error Bands (Linear Regression + StdErr).
-    :return: (linreg_value, upper_seb, lower_seb, r_squared)
+    Calculates Standard Error Bands (Linear Regression + StdErr) for LAST point only.
+    Use calculate_seb_series for full history.
     """
     import numpy as np
 
@@ -535,17 +660,36 @@ def analyze_symbol(symbol, position=None):
     else:
         final_prices = prices[-context_limit:]
 
+    # === CALCULATE HISTORY SERIES (For Prompt Table) ===
+    # Extract numerical closes from the final sampled data
+    hist_closes = [get_price_value(p.get("closePrice", 0)) for p in final_prices]
+
+    # Calculate series on this data so it aligns with the table rows
+    hist_rsi = calculate_rsi_series(hist_closes)
+    hist_sma = calculate_sma_series(hist_closes, AI_THRESHOLDS["SMA_PERIOD"])
+    _, hist_seb_upper, hist_seb_lower = calculate_seb_series(hist_closes)
+
     # Формируем таблицу свечей
     candle_lines = []
-    for p in final_prices:  # Все свечи после smart sampling
+    for i, p in enumerate(final_prices):  # Все свечи после smart sampling
         ts = p.get("snapshotTimeUTC", "")[-8:] if p.get("snapshotTimeUTC") else ""
         o = get_price_value(p.get("openPrice", 0))
         h = get_price_value(p.get("highPrice", 0))
         l = get_price_value(p.get("lowPrice", 0))
         c = get_price_value(p.get("closePrice", 0))
         v = float(p.get("volume", 0))
+
+        # Indicators for this row
+        row_rsi = hist_rsi[i]
+        row_sma = hist_sma[i]
+        row_seb_u = hist_seb_upper[i]
+        row_seb_l = hist_seb_lower[i]
+
         body = "🟢" if c > o else "🔴" if c < o else "⚪"
-        candle_lines.append(f"{ts} | {o:.2f} | {h:.2f} | {l:.2f} | {c:.2f} | {v:.1f} | {body}")
+
+        # Format: Time|O|H|L|C|Vol|RSI|SMA|SEB_U|SEB_L|Pat
+        # Using pipe for clear limitation. Formatting floats to save space but keep precision.
+        candle_lines.append(f"{ts}|{o:.2f}|{h:.2f}|{l:.2f}|{c:.2f}|{v:.1f}|{row_rsi:.1f}|{row_sma:.2f}|{row_seb_u:.2f}|{row_seb_l:.2f}|{body}")
 
     candle_history = "\n".join(candle_lines)
 
@@ -741,7 +885,7 @@ def analyze_symbol(symbol, position=None):
 
 ## 5. ИСТОРИЯ ЦЕН (Context)
 ```
-Time | Open | High | Low | Close | Vol | Pattern
+Time|Open|High|Low|Close|Vol|RSI|SMA|SEB_U|SEB_L|Pattern
 {candle_history}
 ```
 {news_section}

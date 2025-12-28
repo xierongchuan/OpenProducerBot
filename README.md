@@ -200,15 +200,9 @@
     "momentum_consecutive_candles": 3
   },
   "ENABLE_NEWS": false,
-  "SMART_SAMPLING": {
-    "enabled": true,
-    "recent_candles": 30,
-    "history_step": 10
-  },
   "MIN_RISK_REWARD_RATIO": 1.3,
   "POSITION_SIZE_PERCENT": 1.0,
   "LEVERAGE": 20,
-  "DEFAULT_PLOTTER_RANGE": "2h",
   "ENABLE_AI_SKIP_ON_RSI": true
 }
 ```
@@ -217,11 +211,11 @@
 
 | Параметр | Тип | Описание | Рекомендация |
 | :--- | :--- | :--- | :--- |
-| `STRATEGY_STYLE` | Str | **NEW**: Стиль торговли: `"SCALP"`, `"INTRADAY"`, `"SWING"`. | `INTRADAY` |
+| `STRATEGY_STYLE` | Str | **ГЛАВНЫЙ ПАРАМЕТР**: Стиль торговли. Автоматически настраивает таймфреймы, графики и частоту анализа.<br>• `"SCALP"`: 1m свечи, цикл 3 сек, график 6ч.<br>• `"INTRADAY"`: 5m свечи, цикл 60 сек, график 24ч.<br>• `"SWING"`: 15m свечи (сэмпл), цикл 15 мин, график 3 дня. | `INTRADAY` |
 | `EXCHANGE_SYMBOLS` | Dict | Список пар для торговли. Должны соответствовать тикерам BingX. | Топ-10 ликвидных |
 | `AGGRESSIVE_MODE` | Bool | Включает агрессивную стратегию с Momentum Entry. | `true` |
-| `MOMENTUM_STRATEGY` | Dict | **NEW**: Настройки Momentum Breakout стратегии. | `enabled: true` |
-| `ENABLE_AI_SKIP_ON_RSI` | Bool | **UPDATED**: Умный экономайзер. Пропускает вызов AI при RSI > 70, **ЕСЛИ** нет подтверждения High Volume Momentum. | `true` (экономит $) |
+| `MOMENTUM_STRATEGY` | Dict | Настройки Momentum Breakout стратегии. | `enabled: true` |
+| `ENABLE_AI_SKIP_ON_RSI` | Bool | Умный экономайзер. Пропускает вызов AI при RSI > 70, **ЕСЛИ** нет подтверждения High Volume Momentum. | `true` (экономит $) |
 | `min_volume_ratio` | Float | Минимальный объём относительно среднего (0.7 = 70%). | `0.7` |
 
 ### 🤖 Настройка AI Провайдера

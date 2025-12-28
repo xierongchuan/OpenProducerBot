@@ -8,6 +8,8 @@ import logging
 import os
 from datetime import datetime
 
+import time
+
 # Создаем директорию для логов
 LOG_DIR = "data"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -23,6 +25,7 @@ formatter = logging.Formatter(
     '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+formatter.converter = time.gmtime  # Force UTC
 
 # Хэндлер для файла steps.log (по умолчанию)
 # В multiprocessing режиме этот хэндлер будет заменен на специфичный для символа
@@ -71,6 +74,7 @@ def log_trade(message, level='INFO'):
             encoding='utf-8'
         )
         trades_formatter = logging.Formatter('%(asctime)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        trades_formatter.converter = time.gmtime  # Force UTC
         trades_file_handler.setFormatter(trades_formatter)
         trades_logger.addHandler(trades_file_handler)
 

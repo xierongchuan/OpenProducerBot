@@ -7,7 +7,7 @@
 import json
 import time
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Union
 from src.config import NEWSAPI_KEY, ALPHAVANTAGE_KEY, FINNHUB_KEY, NEWS_SETTINGS, SYMBOLS
 from src.utils.logger import info, error, warning
@@ -204,7 +204,7 @@ def get_news_alphavantage(symbol):
             dt = datetime.strptime(time_published, "%Y%m%dT%H%M%S")
             timestamp = dt.isoformat()
         except:
-            timestamp = datetime.now().isoformat()
+            timestamp = datetime.now(timezone.utc).isoformat()
 
         news_items.append({
             "title": title,

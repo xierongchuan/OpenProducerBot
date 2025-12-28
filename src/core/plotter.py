@@ -13,7 +13,7 @@ try:
 except ImportError:
     PANDAS_AVAILABLE = False
 
-from src.config import DATA_DIR, CHARTS_DIR, PLOTTER_RANGES, DEFAULT_PLOTTER_RANGE, CLEANUP_SETTINGS, SYMBOLS, AI_THRESHOLDS, AGGRESSIVE_MODE
+from src.config import DATA_DIR, CHARTS_DIR, PLOTTER_RANGES, DEFAULT_PLOTTER_RANGE, CLEANUP_SETTINGS, SYMBOLS, AI_THRESHOLDS, AGGRESSIVE_MODE, BOT_CONFIG
 from src.utils.logger import info, error
 from src.utils.helpers import get_filename
 
@@ -57,6 +57,57 @@ def calculate_rsi(closes, period=14):
 
     return rsi_values
 
+def resample_data(dates, opens, highs, lows, closes, volumes, timeframe):
+    """Resamples 1m data to target timeframe using Pandas"""
+    if not PANDAS_AVAILABLE:
+        info("⚠️ Pandas not available, skipping resampling (plotting 1m data)")
+        return dates, opens, highs, lows, closes, volumes
+
+    if timeframe == "1m":
+        return dates, opens, highs, lows, closes, volumes
+
+    try:
+        # Create DataFrame
+        df = pd.DataFrame({
+            'date': dates, # dates are already naive UTC or aware UTC
+            'open': opens,
+            'high': highs,
+            'low': lows,
+            'close': closes,
+            'volume': volumes
+        })
+        df.set_index('date', inplace=True)
+
+        # Convert timeframe to pandas offset (e.g. 5m -> 5min)
+        # Note: 'T' is deprecated in favor of 'min' in newer pandas
+        rule = timeframe.replace('m', 'min').replace('h', 'H').replace('d', 'D')
+
+        # Resample
+        # Aggregation rules:
+        # Open: first, High: max, Low: min, Close: last, Volume: sum
+        ohlc_dict = {
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum'
+        }
+
+        resampled = df.resample(rule).agg(ohlc_dict)
+        resampled.dropna(inplace=True)
+
+        return (
+            resampled.index.tolist(),
+            resampled['open'].tolist(),
+            resampled['high'].tolist(),
+            resampled['low'].tolist(),
+            resampled['close'].tolist(),
+            resampled['volume'].tolist()
+        )
+    except Exception as e:
+        error(f"❌ Error resampling data to {timeframe}: {e}")
+        return dates, opens, highs, lows, closes, volumes
+
 def cleanup_old_files():
     """Удаляет старые файлы графиков и данных"""
     if not CLEANUP_SETTINGS["cleanup_old_charts"]:
@@ -64,7 +115,7 @@ def cleanup_old_files():
 
     try:
         retention_days = CLEANUP_SETTINGS["charts_retention_days"]
-        cutoff_date = datetime.now() - timedelta(days=retention_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
         # Очищаем старые графики
         if os.path.exists(CHARTS_DIR):
@@ -72,7 +123,7 @@ def cleanup_old_files():
             for filename in os.listdir(CHARTS_DIR):
                 filepath = os.path.join(CHARTS_DIR, filename)
                 if os.path.isfile(filepath):
-                    file_time = datetime.fromtimestamp(os.path.getctime(filepath))
+                    file_time = datetime.fromtimestamp(os.path.getctime(filepath), tz=timezone.utc)
                     if file_time < cutoff_date:
                         os.remove(filepath)
                         removed_count += 1
@@ -83,7 +134,7 @@ def cleanup_old_files():
         # Очищаем старые данные о ценах
         if CLEANUP_SETTINGS["cleanup_old_data"]:
             retention_days = CLEANUP_SETTINGS["data_retention_days"]
-            cutoff_date = datetime.now() - timedelta(days=retention_days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
             prices_dir = f"{DATA_DIR}/prices"
             if os.path.exists(prices_dir):
@@ -91,7 +142,7 @@ def cleanup_old_files():
                 for filename in os.listdir(prices_dir):
                     filepath = os.path.join(prices_dir, filename)
                     if os.path.isfile(filepath):
-                        file_time = datetime.fromtimestamp(os.path.getctime(filepath))
+                        file_time = datetime.fromtimestamp(os.path.getctime(filepath), tz=timezone.utc)
                         if file_time < cutoff_date:
                             os.remove(filepath)
                             removed_count += 1
@@ -194,7 +245,24 @@ def plot_symbol(symbol, time_range=None, current_position=None):
         info(f"⚠️ Нет данных для {symbol}")
         return
 
-    # Calculate indicators on FULL dataset
+    # --- RESAMPLING START ---
+    # Determine target timeframe from config
+    target_timeframe = "1m"
+    try:
+        style = BOT_CONFIG.get("STRATEGY_STYLE", "SCALP")
+        presets = BOT_CONFIG.get("STYLE_PRESETS", {})
+        target_timeframe = presets.get(style, {}).get("timeframe", "1m")
+    except Exception as e:
+        error(f"⚠️ Error reading timeframe config: {e}")
+
+    if target_timeframe != "1m":
+        # info(f"🔄 Resampling {symbol} data to {target_timeframe}...")
+        all_dates, all_opens, all_highs, all_lows, all_closes, all_volumes = resample_data(
+            all_dates, all_opens, all_highs, all_lows, all_closes, all_volumes, target_timeframe
+        )
+    # --- RESAMPLING END ---
+
+    # Calculate indicators on FULL filtered/resampled dataset
     # SMAs
     all_smas = {}
     sma_periods = [10, 20, 50, 100, 200]
@@ -222,9 +290,9 @@ def plot_symbol(symbol, time_range=None, current_position=None):
         if ts_dt < cutoff_time:
             continue
 
-        # Convert to Local Time (Naive) for plotting
-        ts_local = ts_dt.astimezone().replace(tzinfo=None)
-        dates.append(ts_local)
+        # Use UTC naive for plotting to ensure matplotlib doesn't auto-convert to system local
+        ts_naive = ts_dt.replace(tzinfo=None)
+        dates.append(ts_naive)
 
         opens.append(all_opens[i])
         highs.append(all_highs[i])
@@ -424,7 +492,7 @@ def plot_symbol(symbol, time_range=None, current_position=None):
             info(f"⚠️ Ошибка отображения позиции на графике: {e}")
 
     # Оформление графика цены
-    ax1.set_title(f"{symbol} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({time_range})", fontsize=20, pad=40)
+    ax1.set_title(f"{symbol} - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')} ({time_range})", fontsize=20, pad=40)
 
     # --- STATUS BADGES ---
     # 1. Trading Mode Badge
@@ -494,10 +562,10 @@ def plot_symbol(symbol, time_range=None, current_position=None):
     ax3.grid(alpha=0.2)
 
     # Форматирование оси X
-    # Используем стандартный AutoDateFormatter, он лучше адаптируется
+    # Используем стандартный AutoDateFormatter с явным UTC
     import matplotlib.dates as mdates
     locator = mdates.AutoDateLocator()
-    formatter = mdates.AutoDateFormatter(locator)
+    formatter = mdates.AutoDateFormatter(locator, tz=timezone.utc)
     # Настраиваем форматтер чтобы показывать часы и минуты
     formatter.scaled[1/(24*60)] = '%H:%M' # Minutes
     formatter.scaled[1/24] = '%H:%M'      # Hours

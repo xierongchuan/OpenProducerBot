@@ -5,7 +5,8 @@
       "EURUSD"
     ],
     "bingx": [
-      "LTCUSDT"
+      "XRPUSDT",
+      "ZECUSDT"
     ]
   },
   "EXCHANGE_FEES": {
@@ -131,6 +132,7 @@
     "extract_full_content": true
   },
   "ENABLE_AI_SKIP_ON_RSI": false,
+  "ENABLE_LOW_VOLUME_FILTER": false,
   "AI_SETTINGS": {
     "provider": "openrouter",
     "model": "xiaomi/mimo-v2-flash:free",
@@ -155,7 +157,7 @@
     "momentum_entry_enabled": true,
     "momentum_consecutive_candles": 3
   },
-  "STRATEGY_STYLE": "SCALP",
+  "STRATEGY_STYLE": "INTRADAY",
   "STYLE_PRESETS": {
     "SCALP": {
       "timeframe": "1m",
@@ -171,7 +173,7 @@
     "INTRADAY": {
       "timeframe": "5m",
       "chart_period": "1D",
-      "plotter_period": "12h",
+      "plotter_period": "4h",
       "loop_interval": 60,
       "position_check_interval": 10,
       "atr_sl_mult": 2.0,

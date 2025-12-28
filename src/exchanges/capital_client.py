@@ -51,7 +51,7 @@ class CapitalClient(ExchangeClient):
         }
 
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            response = requests.post(url, json=payload, headers=headers, timeout=6)
             response.raise_for_status()
 
             tokens = {
@@ -72,7 +72,7 @@ class CapitalClient(ExchangeClient):
         url = f"{self.base_url}accounts"
 
         try:
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=headers, timeout=6)
             response.raise_for_status()
             accounts = response.json().get("accounts", [])
 
@@ -95,7 +95,7 @@ class CapitalClient(ExchangeClient):
             session_url = f"{self.base_url}session"
             payload = {"accountId": target_account["accountId"]}
             headers["Version"] = "2"
-            requests.put(session_url, json=payload, headers=headers, timeout=10)
+            requests.put(session_url, json=payload, headers=headers, timeout=6)
 
             return target_account
         except Exception as e:

@@ -82,16 +82,16 @@ class BingXClient(ExchangeClient):
                 if method.lower() == "get":
                     # For GET, append to URL
                     full_url = f"{url}?{final_query_string}"
-                    response = requests.get(full_url, headers=headers, timeout=20)
+                    response = requests.get(full_url, headers=headers, timeout=6)
                 elif method.lower() == "post":
                     # For POST, send as body
                     # Ensure correct content type
                     headers["Content-Type"] = "application/x-www-form-urlencoded"
-                    response = requests.post(url, data=final_query_string, headers=headers, timeout=20)
+                    response = requests.post(url, data=final_query_string, headers=headers, timeout=6)
                 elif method.lower() == "delete":
                     # For DELETE, BingX might expect params in URL
                     full_url = f"{url}?{final_query_string}"
-                    response = requests.delete(full_url, headers=headers, timeout=20)
+                    response = requests.delete(full_url, headers=headers, timeout=6)
                 else:
                     raise ValueError(f"Unsupported method: {method}")
 
@@ -202,7 +202,7 @@ class BingXClient(ExchangeClient):
 
         for attempt in range(max_retries):
             try:
-                response = requests.get(market_url, params=params, timeout=20)
+                response = requests.get(market_url, params=params, timeout=6)
                 response.raise_for_status()
                 data = response.json()
                 break  # Success, exit retry loop

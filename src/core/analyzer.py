@@ -845,7 +845,16 @@ def analyze_symbol(symbol, position=None):
 """
 
     # === ФОРМИРУЕМ ОПТИМИЗИРОВАННЫЙ ПРОМПТ ===
+    fee_context = f"""
+    ## 💰 КОМИССИИ И УБЫТКИ (CRITICAL)
+    *   **Биржевая комиссия:** {TRADING_FEE}% (за сделку).
+    *   **Round-Trip (Вход+Выход):** ~{TRADING_FEE * 2:.3f}%.
+    *   **Break-Even:** Цена должна пройти минимум {TRADING_FEE * 2.1:.3f}%, чтобы покрыть комиссию.
+    *   **ПРАВИЛО:** Не открывай сделки с потенциалом прибыли < {TRADING_FEE * 3:.3f}% (комиссия съест прибыль).
+    """
+
     prompt = f"""## РОЛЬ И ЗАДАЧА
+{fee_context}
 {role_desc}
 Цель: {objective}
 Стиль: **{STRATEGY_STYLE}**

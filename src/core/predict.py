@@ -138,25 +138,32 @@ def smart_filter(analysis):
     - True, "Reason": если нужно вызвать ИИ.
     - False, "Reason": если можно пропустить (Auto-HOLD).
     """
-    symbol = analysis["symbol"]
-    has_position = analysis.get("has_position", False)
-    rsi = analysis["rsi"]
+    from src.config import (
+        AI_THRESHOLDS,
+        ENABLE_AI_SKIP_ON_RSI,
+        MOMENTUM_STRATEGY,
+        BOT_CONFIG as bot_config # Import full config to access dynamic keys
+    )
+
+    analysis_rsi = analysis["rsi"]
     current_price = analysis["current_price"]
-    sma = analysis["sma"]
     volume_ratio = analysis.get("volume_ratio", 1.0)
+    has_position = analysis.get("has_position", False)
 
     # 1. Если есть открытая позиция - ВСЕГДА вызываем ИИ (нужен менеджмент)
     if has_position:
         return True, "Открытая позиция (Management)"
 
     # 2. Low Volume Filter (Low Cost: < 0.4x)
-    if volume_ratio < 0.4:
+    # Default to True if not present to maintain backward compatibility, BUT user requested control.
+    enable_low_vol_filter = bot_config.get("ENABLE_LOW_VOLUME_FILTER", False)
+
+    if enable_low_vol_filter and volume_ratio < 0.4:
         # Ignore filter if RSI is extreme (possible reversal)
-        if 25 < rsi < 75:
+        if 25 < analysis_rsi < 75:
             return False, f"Low Volume ({volume_ratio:.2f}x) -> Auto-HOLD (Save Cost)"
 
-    # 2. Базовые пороги
-    from src.config import AI_THRESHOLDS, ENABLE_AI_SKIP_ON_RSI, MOMENTUM_STRATEGY
+    # 3. Базовые пороги
     rsi_min = AI_THRESHOLDS.get("RSI_NEUTRAL_MIN", 45)
     rsi_max = AI_THRESHOLDS.get("RSI_NEUTRAL_MAX", 55)
     rsi_overbought = AI_THRESHOLDS.get("RSI_OVERBOUGHT", 70)
@@ -179,32 +186,33 @@ def smart_filter(analysis):
     # --- ЛОГИКА SKIP / CALL ---
 
     # A. RSI HIGH (> 70)
-    if rsi > rsi_overbought:
+    if analysis_rsi > rsi_overbought:
         if momentum_enabled and strong_uptrend and high_volume:
-            return True, f"Momentum Breakout Potential (RSI={rsi}, Vol=High)"
+            return True, f"Momentum Breakout Potential (RSI={analysis_rsi}, Vol=High)"
         if ENABLE_AI_SKIP_ON_RSI:
-            return False, f"RSI Overbought ({rsi}) & No Momentum -> Auto-HOLD"
+            return False, f"RSI Overbought ({analysis_rsi}) & No Momentum -> Auto-HOLD"
 
     # B. RSI LOW (< 30)
-    if rsi < rsi_oversold:
+    if analysis_rsi < rsi_oversold:
         if momentum_enabled and strong_downtrend and high_volume:
-            return True, f"Momentum Breakdown Potential (RSI={rsi}, Vol=High)"
+            return True, f"Momentum Breakdown Potential (RSI={analysis_rsi}, Vol=High)"
         if ENABLE_AI_SKIP_ON_RSI:
-            return False, f"RSI Oversold ({rsi}) & No Momentum -> Auto-HOLD"
+            return False, f"RSI Oversold ({analysis_rsi}) & No Momentum -> Auto-HOLD"
 
     # C. NEUTRAL ZONE (45-55)
-    if rsi_min <= rsi <= rsi_max:
+    if rsi_min <= analysis_rsi <= rsi_max:
         # Если есть тренд (UP/DOWN) -> Call AI (Pullback search)
         if strong_uptrend:
             return True, "Neutral RSI + Uptrend (Possible Pullback)"
         if strong_downtrend:
             return True, "Neutral RSI + Downtrend (Possible Pullback)"
 
-        # Если флэт -> Skip
-        return False, f"Neutral RSI ({rsi}) & Choppy/Flat -> Auto-HOLD"
+        # Если флэт -> Skip ONLY if Skip is ENABLED
+        if ENABLE_AI_SKIP_ON_RSI:
+            return False, f"Neutral RSI ({analysis_rsi}) & Choppy/Flat -> Auto-HOLD"
 
     # D. DEFAULT (Active Market)
-    return True, f"Active Market (RSI={rsi})"
+    return True, f"Active Market (RSI={analysis_rsi})"
 
 def should_call_ai(analysis):
     """Wrapper для совместимости, вызывает smart_filter и логирует результат."""
@@ -221,17 +229,18 @@ def should_call_ai(analysis):
     else:
         info(f"💤 {symbol}: {reason} -> Пропуск ИИ")
 
-    return should_call
+    return should_call, reason
 
 def process_analysis(analysis):
     """Обрабатывает один анализ: проверяет условия, делает запрос к ИИ (с ретраями) и возвращает прогноз"""
     # Технический пре-фильтр
-    if not should_call_ai(analysis):
+    should_call, skip_reason = should_call_ai(analysis)
+    if not should_call:
         return {
             **analysis,
             "action": "hold",
             "confidence": 0.0,
-            "reason": f"Auto-HOLD: Нейтральный рынок (RSI={analysis['rsi']})"
+            "reason": skip_reason
         }
 
     info(f"🧠 Генерация прогноза для {analysis['symbol']}...")

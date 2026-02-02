@@ -60,9 +60,7 @@ export EXCHANGE=bingx && python3 run.py
 
 # Тестирование интеграции
 export EXCHANGE=bingx && python3 tests/test_integration.py
-                # Выбор биржи (capital/bingx)
 export DEEPSEEK_API_KEY="key"            # Настроить API ключ
-echo $CAP_API_USERNAME                      # Проверить переменную
 
 # Права доступа
 chmod +x *.sh                            # Сделать скрипты исполняемыми

@@ -27,12 +27,6 @@ except Exception as e:
 # Настройки системы
 MODE = os.getenv("MODE", "demo")  # "demo" для тестов, "real" для реальных денег
 
-# Ваши учетные данные Capital.com (обязательно установите переменные окружения)
-# НЕ используйте fallback значения в коде - это небезопасно!
-USERNAME = os.getenv("CAP_API_USERNAME", "")
-PASSWORD = os.getenv("CAP_API_PASSWORD", "")
-CAP_API_KEY = os.getenv("CAP_API_KEY", "")  # API ключ из Settings > API Integrations
-
 import json
 
 # Функция для загрузки конфигурации
@@ -40,7 +34,6 @@ def load_bot_config():
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot_config.json')
     default_config = {
         "EXCHANGE_SYMBOLS": {
-            "capital": ["BTC/USD"],
             "bingx": ["BTC-USDT"]
         },
         "POSITION_SIZE_PERCENT": 5.0,
@@ -106,13 +99,13 @@ def load_bot_config():
 BOT_CONFIG = load_bot_config()
 
 # Выбор биржи (нужен для определения списка символов)
-EXCHANGE = os.getenv("EXCHANGE", "capital")  # "capital" или "bingx"
+EXCHANGE = os.getenv("EXCHANGE", "bingx")
 
 # Настройки трейдинга из конфига
 TRADING_SETTINGS = BOT_CONFIG.get("TRADING_SETTINGS", {})
 EXCHANGE_SYMBOLS = BOT_CONFIG.get("EXCHANGE_SYMBOLS", {})
 SYMBOLS = EXCHANGE_SYMBOLS.get(EXCHANGE, ["BTC/USD"])
-EXCHANGE_FEES = BOT_CONFIG.get("EXCHANGE_FEES", {"capital": 0.0, "bingx": 0.05})
+EXCHANGE_FEES = BOT_CONFIG.get("EXCHANGE_FEES", {"bingx": 0.05})
 TRADING_FEE = EXCHANGE_FEES.get(EXCHANGE, 0.05)
 
 POSITION_SIZE_PERCENT = BOT_CONFIG.get("POSITION_SIZE_PERCENT", 5.0)
@@ -309,15 +302,6 @@ else:
 if not AI_API_KEY:
     print(f"⚠️ WARNING: API Key for provider '{AI_PROVIDER}' is missing!")
 
-# API Endpoint для демо и реального режима
-# ВАЖНО: Демо-счет - это НЕ отдельный тип аккаунта!
-# Демо режим определяется по URL endpoint'а, а тип аккаунта может быть CFD, SPREADBET и т.д.
-# Демо: https://demo-api-capital.backend-capital.com/api/v1/
-# Реальный: https://api-capital.backend-capital.com/api/v1/
-API_BASE = "https://demo-api-capital.backend-capital.com/api/v1/" if MODE == "demo" else "https://api-capital.backend-capital.com/api/v1/"
-
-# Выбор биржи
-
 # BingX API настройки
 BINGX_API_KEY = os.getenv("BINGX_API_KEY", "")
 BINGX_SECRET_KEY = os.getenv("BINGX_SECRET_KEY", "")
@@ -328,10 +312,6 @@ BINGX_SECRET_KEY = os.getenv("BINGX_SECRET_KEY", "")
 BINGX_API_URL = "https://open-api-vst.bingx.com" if MODE == "demo" else "https://open-api.bingx.com"
 
 # Логируем выбранный endpoint для отладки
-print(f"🌐 Используется биржа: {EXCHANGE}")
-if EXCHANGE == "capital":
-    print(f"🌐 Capital.com API endpoint: {API_BASE} ({'Demo' if MODE == 'demo' else 'Real'})")
-else:
-    print(f"🌐 BingX API endpoint: {BINGX_API_URL} ({'Demo (VST)' if MODE == 'demo' else 'Real'})")
+print(f"🌐 BingX API endpoint: {BINGX_API_URL} ({'Demo (VST)' if MODE == 'demo' else 'Real'})")
 
 print(f"📰 Новости: {'ВКЛЮЧЕНЫ' if ENABLE_NEWS else 'ОТКЛЮЧЕНЫ'}")

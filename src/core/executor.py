@@ -55,22 +55,13 @@ def create_order(symbol, direction, price, ai_sl=None, ai_tp=None, reason="Unkno
         balance_data = client.get_balance()
 
         # Extract equity/balance based on exchange response structure
-        # BingX get_balance (perpetual) returns dict with 'balance' or 'equity'
-        # Capital.com returns list of accounts
-
         total_balance = 0.0
 
         if isinstance(balance_data, dict):
             # BingX Perpetual: {'balance': 1000, 'equity': 1000, ...}
-            # BingX Standard: {'balance': 1000, ...}
-            # Try equity first, then balance
             total_balance = float(balance_data.get("equity", balance_data.get("balance", 0.0)))
         elif isinstance(balance_data, list):
-            # Capital.com or BingX Spot/Standard list
-            # Sum up available balances or take the first one
             for acc in balance_data:
-                # Capital: 'balance' or 'available'
-                # BingX Spot: 'balance'
                 b = float(acc.get("equity", acc.get("balance", 0.0)))
                 total_balance += b
 

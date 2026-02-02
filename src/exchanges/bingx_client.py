@@ -176,7 +176,7 @@ class BingXClient(ExchangeClient):
         # или эндпоинт может отличаться. Рыночные данные одинаковы для демо и реала.
         market_url = "https://open-api.bingx.com/openApi/swap/v3/quote/klines"
 
-        # Map Capital.com interval constants to BingX format
+        # Map verbose interval constants to BingX format
         interval_map = {
             "MINUTE_1": "1m",
             "MINUTE_5": "5m",
@@ -220,8 +220,7 @@ class BingXClient(ExchangeClient):
 
         if data and data.get("code") == 0:
             # BingX returns: [time, open, high, low, close, volume, ...]
-            # Need to convert to Capital.com format:
-            # {"snapshotTimeUTC": "2023-10-27T10:00:00", "closePrice": 34000.50, ...}
+            # Convert to unified format:
 
             klines = data.get("data", [])
             formatted_data = []
@@ -258,9 +257,7 @@ class BingXClient(ExchangeClient):
                     "volume": volume
                 })
 
-            # Capital.com returns oldest first?
-            # BingX usually returns newest first or oldest first depending on API
-            # Let's assume we need to sort by time ascending
+            # Sort by time ascending
             formatted_data.sort(key=lambda x: x["snapshotTimeUTC"])
 
             return formatted_data
@@ -289,7 +286,7 @@ class BingXClient(ExchangeClient):
                 if symbol not in positions:
                     positions[symbol] = []
 
-                # Adapt to Capital.com format structure
+                # Adapt to unified format
                 # Determine side based on positionSide if available, else fallback to amount sign
                 pos_side = pos.get("positionSide", "").upper()
                 if pos_side == "SHORT":

@@ -1,16 +1,11 @@
 {
   "EXCHANGE_SYMBOLS": {
-    "capital": [
-      "BTCUSD",
-      "EURUSD"
-    ],
     "bingx": [
-      "XRPUSDT",
-      "ZECUSDT"
+      "BTCUSDT",
+      "SOLUSDT"
     ]
   },
   "EXCHANGE_FEES": {
-    "capital": 0.0,
     "bingx": 0.1
   },
   "POSITION_SIZE_PERCENT": 1.0,
@@ -61,7 +56,7 @@
     "1W": {
       "days": 7,
       "candles": 750,
-      "interval": "15h",
+      "interval": "15m",
       "ai_context_candles": 500
     },
     "14D": {

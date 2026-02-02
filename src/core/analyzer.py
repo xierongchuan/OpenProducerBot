@@ -68,7 +68,7 @@ def calculate_indicators(prices):
         raise ValueError("Нет данных о ценах")
 
     try:
-        # Handle different price formats (Capital.com dict vs BingX float)
+        # Handle different price formats (dict vs float)
         closes = []
         for candle in prices:
             price_data = candle["closePrice"]

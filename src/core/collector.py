@@ -61,15 +61,7 @@ def fetch_prices(symbol):
         required_fields = ["closePrice", "snapshotTimeUTC"]
         for field in required_fields:
             if field not in prices[0]:
-                # BingX might have different field names, need to standardize or check
-                # BingX returns: time, open, close, high, low, volume
-                # Capital returns: snapshotTimeUTC, openPrice, closePrice...
-                # The ExchangeClient implementations should ideally normalize this.
-                # But for now let's assume they return what they return and we might need to adapt here or in client.
-                # Wait, CapitalClient returns raw Capital response. BingXClient returns raw BingX response?
-                # My ExchangeClient docstring said: "Returns a list of dictionaries with keys: snapshotTimeUTC, openPrice..."
-                # So the clients MUST normalize.
-                # Let's check BingXClient implementation.
+                # ExchangeClient implementations must normalize field names
                 pass
 
         info(f"✅ Получено {len(prices)} свечей для {symbol}")

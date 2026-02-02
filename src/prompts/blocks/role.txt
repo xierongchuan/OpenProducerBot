@@ -1,0 +1,6 @@
+## РОЛЬ И ЗАДАЧА
+{fee_context}
+{role_desc}
+Цель: {objective}
+Стиль: **{strategy_style}**
+{time_horizon}

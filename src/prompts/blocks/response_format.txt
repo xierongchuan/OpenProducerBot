@@ -1,0 +1,24 @@
+## ФОРМАТ ОТВЕТА
+
+**CRITICAL INSTRUCTION:**
+Return **ONLY** valid JSON.
+DO NOT write "Here is the JSON...".
+DO NOT write "Evaluation...".
+DO NOT use markdown code blocks (```json ... ```).
+JUST THE RAW JSON OBJECT.
+
+{{{{
+    "action": "buy" | "sell" | "close" | "close_partial" | "hold",
+    "confidence": float (0.0-1.0, threshold: {min_confidence}),
+    "percentage": float (0.3-1.0 for close_partial),
+    "stop_loss": float (Price),
+    "take_profit": float (Price),
+
+    "reason": "СТРОГО: [SETUP_TYPE] | [KEY_REASON] | [RISK_LEVEL]"
+}}}}
+
+
+Пример reason:
+- "Momentum Breakout | 3 Green Candles + Vol Surge | Risk: Low"
+- "Trend Pullback | EMA9 Support Rejection | Risk: Medium"
+- "Hold | Choppy Market, No Clear Trend | Risk: High"

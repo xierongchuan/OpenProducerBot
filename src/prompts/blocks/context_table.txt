@@ -1,0 +1,11 @@
+## 1. ТОРГОВЫЙ КОНТЕКСТ
+| Параметр | Значение |
+|----------|----------|
+| Пары | {symbol} |
+| Интервал | {current_interval} |
+| История | {context_limit} свечей |
+| Стиль | **{strategy_style}** |
+| Режим | **{strategy_mode}** |
+
+{position_block}
+{pnl_context}

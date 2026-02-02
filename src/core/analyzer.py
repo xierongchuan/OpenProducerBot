@@ -745,259 +745,54 @@ def analyze_symbol(symbol, position=None):
     elif trends_aligned and volume_ratio > 1.0:
         is_momentum_market = True
 
-    # === DYNAMIC ROLE & STRATEGY SELECTION ===
+    # === СБОРКА ПРОМПТА ===
+    from src.prompts.builder import PromptBuilder
 
-    # 1. Define Role based on Style
-    if STRATEGY_STYLE == "SWING":
-        role_desc = "Ты — профессиональный Свинг-Трейдер (Swing Trader)."
-        objective = "Поиск крупных движений (Days/Weeks), игнорирование внутридневного шума."
-        time_horizon = "Horizon: 2-14 Days."
+    fee_context = (
+        f"## 💰 КОМИССИИ И УБЫТКИ (CRITICAL)\n"
+        f"*   **Биржевая комиссия:** {TRADING_FEE}% (за сделку).\n"
+        f"*   **Round-Trip (Вход+Выход):** ~{TRADING_FEE * 2:.3f}%.\n"
+        f"*   **Break-Even:** Цена должна пройти минимум {TRADING_FEE * 2.1:.3f}%, чтобы покрыть комиссию.\n"
+        f"*   **ПРАВИЛО:** Не открывай сделки с потенциалом прибыли < {TRADING_FEE * 3:.3f}% (комиссия съест прибыль)."
+    )
 
-        # Swing Strategy
-        strategy_section = f"""
-## 3. СТРАТЕГИЯ: 🌊 SWING TRADING (MULTI-DAY)
-*Контекст: Анализ 14 дней истории (1H свечи). Фокус на глобальном тренде.*
+    prompt_ctx = {
+        "fee_context": fee_context,
+        "symbol": symbol,
+        "current_interval": current_interval,
+        "context_limit": context_limit,
+        "strategy_mode": strategy_mode,
+        "position_block": position_block,
+        "pnl_context": pnl_context,
+        "current_price": current_price,
+        "global_trend": global_trend,
+        "local_trend": local_trend,
+        "rsi": rsi,
+        "atr": atr,
+        "volume_status": volume_status,
+        "volume_ratio": volume_ratio,
+        "last_5_direction": last_5_direction,
+        "direction_desc": direction_desc,
+        "seb_status": seb_status,
+        "trend_quality_desc": trend_quality_desc,
+        "seb_r_sq": seb_r_sq,
+        "resistance": resistance,
+        "resistance_dist_pct": resistance_dist_pct,
+        "support": support,
+        "support_dist_pct": support_dist_pct,
+        "seb_upper": seb_upper,
+        "seb_lower": seb_lower,
+        "long_sl": max(support - atr * 0.5, current_price - atr * atr_sl_mult),
+        "long_tp": min(resistance, current_price + atr * atr_tp_mult),
+        "short_sl": min(resistance + atr * 0.5, current_price + atr * atr_sl_mult),
+        "short_tp": max(support, current_price - atr * atr_tp_mult),
+        "candle_history": candle_history,
+        "news_section": news_section,
+        "min_confidence": min_confidence,
+        "is_momentum_market": is_momentum_market,
+    }
 
-**Твоя Задача:**
-Строить позицию для удержания от 2 до 10 дней.
-
-**Условия входа (LONG):**
-1.  **Macro Trend:** Цена выше SMA(200) или долгосрочный аптренд.
-2.  **Structure:** Higher Highs + Higher Lows на графике.
-3.  **Setup:** Откат к сильной поддержке или пробой консолидации.
-4.  **Confirm:** Нет противоречия с новостным фоном.
-
-**Условия выхода:**
-1.  **TP:** Минимум 3-5% (или 3R). Давай прибыли течь.
-2.  **SL:** Слом рыночной структуры (Structure Break).
-3.  **Noise:** НЕ реагируй на одиночные контр-свечи, если структура сохраняется.
-"""
-
-    elif STRATEGY_STYLE == "SCALP":
-        role_desc = "Ты — Algo-Scalper (High Frequency Trading)."
-        objective = "Сбор ликвидности, быстрые сделки, минимизация времени в рынке."
-        time_horizon = "Horizon: 1-15 Minutes."
-
-        # Scalp Strategy (Sniper/liquidity focus)
-        strategy_section = f"""
-## 3. СТРАТЕГИЯ: ⚡ PROFESSIONAL SCALPING (1m TF)
-*Контекст: Работа на микро-структуре рынка. Скорость и точность важнее всего.*
-
-**🧠 МЕНТАЛИТЕТ:**
-Ты — не инвестор. Ты не гадаешь будущее. Ты ищешь **дисбаланс спроса и предложения** прямо сейчас.
-Твоя задача: "Укусить и убежать".
-
-**🎯 СЕТАПЫ ДЛЯ ВХОДА:**
-1.  **🚀 IMPULSE BREAKOUT (Пробой):**
-    *   Цена пробивает локальный уровень на всплеске объема (>1.5x средних).
-    *   **ВАЖНО:** RSI > 70 при пробое вверх — это **СИЛА**, а не перекупленность. Покупай силу!
-    *   *Цель:* Забрать импульсное расширение диапазона.
-
-2.  **🎣 LIQUIDITY GRAB (Сбор ликвидности/Откат):**
-    *   Резкий "прокол" уровня поддержки/сопротивления и моментальный возврат.
-    *   "Снятие стопов" толпы.
-    *   *Вход:* Лимитный/Market вход на возврате в диапазон.
-
-**🛑 УПРАВЛЕНИЕ ПОЗИЦИЕЙ:**
-1.  **TP (Take Profit):** Реалистичный скальп: **0.3% - 0.8%** чистого движения.
-    *   *Закрывай часть (50%) сразу, как видишь зеленый PnL.*
-2.  **TIME STOP:** Если цена не пошла в твою сторону за **3 свечи** (3 минуты) -> ВЫХОДИ.
-    *   *Не "замораживай" капитал. Мертвые деньги = убыток.*
-3.  **SL (Stop Loss):** Слом микро-структуры.
-
-**⚠️ ФИЛЬТРЫ:**
-*   Если спред широкий или рынок "рваный" (gaps) -> SKIP.
-*   Если нет объема -> SKIP.
-"""
-
-    else: # INTRADAY
-        role_desc = "Ты — внутридневной трейдер (Intraday Trader)."
-        objective = "Торговля внутри сессии, закрытие всех позиций к концу дня."
-        time_horizon = "Horizon: 4-12 Hours."
-
-        if is_momentum_market:
-            # Intraday Momentum
-             strategy_section = f"""
-## 3. СТРАТЕГИЯ: 🔥 INTRADAY BREAKOUT
-*Контекст: Рынок активен, работаем по тренду дня.*
-
-**Твоя Задача:**
-Найти точку входа в продолжение дневного тренда.
-
-**Условия:**
-1.  Пробой уровня сопротивления/поддержки дня.
-2.  Подтверждение объемом.
-3.  Удержание сделки до конца сессии или разворота.
-"""
-        else:
-            # Intraday Pullback
-             strategy_section = f"""
-## 3. СТРАТЕГИЯ: ⚓ INTRADAY PULLBACK (ОТКАТ)
-*Контекст: Спокойный рынок, работаем от коррекций.*
-
-**Твоя Задача:**
-Купить на низах (support/EMA) растущего тренда.
-
-**Условия:**
-1.  Касание EMA или уровня поддержки.
-2.  Снижение объема на откате.
-3.  RSI вернулся в нейтральную зону.
-"""
-
-    # === ФОРМИРУЕМ ОПТИМИЗИРОВАННЫЙ ПРОМПТ ===
-    fee_context = f"""
-    ## 💰 КОМИССИИ И УБЫТКИ (CRITICAL)
-    *   **Биржевая комиссия:** {TRADING_FEE}% (за сделку).
-    *   **Round-Trip (Вход+Выход):** ~{TRADING_FEE * 2:.3f}%.
-    *   **Break-Even:** Цена должна пройти минимум {TRADING_FEE * 2.1:.3f}%, чтобы покрыть комиссию.
-    *   **ПРАВИЛО:** Не открывай сделки с потенциалом прибыли < {TRADING_FEE * 3:.3f}% (комиссия съест прибыль).
-    """
-
-    prompt = f"""## РОЛЬ И ЗАДАЧА
-{fee_context}
-{role_desc}
-Цель: {objective}
-Стиль: **{STRATEGY_STYLE}**
-{time_horizon}
-
-**ТВОИ ПРИНЦИПЫ:**
-1.  **Systematic:** Строго следуй алгоритму стратегии.
-2.  **Risk Averse:** Лучше пропустить сделку, чем войти с плохим R:R.
-3.  **Data Driven:** Никаких галлюцинаций. Только цифры из таблиц ниже.
-
----
-
-## 1. ТОРГОВЫЙ КОНТЕКСТ
-| Параметр | Значение |
-|----------|----------|
-| Пары | {symbol} |
-| Интервал | {current_interval} |
-| История | {context_limit} свечей |
-| Стиль | **{STRATEGY_STYLE}** |
-| Режим | **{strategy_mode}** |
-
-{position_block}
-{pnl_context}
-
----
-
-## 2. АНАЛИЗ РЫНКА
-### A. Индикаторы
-| Метрика | Значение |
-|---------|----------|
-| Цена | {current_price:.2f} |
-| Тренд (Global) | {global_trend} |
-| Тренд (Local) | {local_trend} |
-| RSI(14) | {rsi:.1f} |
-| ATR(14) | {atr:.2f} |
-
-### B. Импульс
-| Индикатор | Статус | Значение |
-|-----------|--------|----------|
-| Volume | {volume_status} | {volume_ratio:.2f}x |
-| Pattern | {last_5_direction} | {direction_desc} |
-| SEB (Trend) | {seb_status} | Quality: {trend_quality_desc} (R²={seb_r_sq:.2f}) |
-
-### C. Уровни
-- **Resistance:** {resistance:.2f} (+{resistance_dist_pct:.2f}%)
-- **Support:** {support:.2f} (-{support_dist_pct:.2f}%)
-- **SE Bands:** Upper={seb_upper:.2f}, Lower={seb_lower:.2f}
-
----
-
-{strategy_section}
-
----
-
-### D. СПЕЦИАЛЬНЫЕ СИТУАЦИИ (REVERSAL & CORRECTIONS)
-
-#### 1. SHARP DROP & BOUNCE (V-Shape / Отскок)
-**Ситуация:** Резкое падение цены (Panic Dump) и RSI < 25 (или < 20).
-**Анализ:** Риск "продажи дна" (Selling the bottom).
-**Реакция:**
-- **НЕ ВХОДИ В SHORT**, если цена уже упала на > 2% за короткое время и RSI экстремально низок.
-- Ожидай **ОТСКОК (Bounce)** к EMA9/EMA21.
-- Если видишь разворотную свечу (Hammer/Pinbar) на высоком объеме -> Рассмотри **SCALP LONG** (Counter-trend).
-
-#### 2. FALSE BREAKOUT (Fakeout / Ложный пробой)
-**Ситуация:** Цена пробила Уровень (Support/Resistance), но свеча закрылась с длинным хвостом обратно за уровень.
-**Реакция:**
-- Это сигнал **НЕУДАВШЕГОСЯ ПРОБОЯ**.
-- Торгуй в ПРОТИВОПОЛОЖНУЮ сторону от пробоя (Reversal).
-- Stop Loss: Сразу за "хвостом" (экстремумом) ложного пробоя.
-
-#### 3. CORRECTION vs REVERSAL (Коррекция или Разворот?)
-**Ситуация:** Тренд идет вверх, но началась красная серия свечей.
-- **Healthy Correction:** Цена плавно опускается к EMA9/EMA21, Объем ПАДАЕТ. -> **HOLD LONG / BUY DIP**.
-- **Trend Reversal:** Цена резко пробивает EMA21 вниз на РАСТУЩЕМ объеме. -> **CLOSE LONG / SELL**.
-
----
-
-### E. УПРАВЛЕНИЕ ПОЗИЦИЕЙ (STRATEGY FOR OPEN POSITIONS)
-
-**ГЛАВНОЕ ПРАВИЛО:** НЕ ЗАКРЫВАЙ СДЕЛКУ ПРЕЖДЕВРЕМЕННО. "Let winners run".
-
-1.  **Low Profit (< 0.5% ROE) / Loss:**
-    -   **HOLD**, если тренд сохраняется.
-    -   **CLOSE**, только если явный разворот против тебя (см. Breakout/Reversal).
-    -   *Не выходи из сделки только потому, что "скучно" или "RSI высок".*
-
-2.  **Medium Profit (5-15% ROE):**
-    -   Передвинь **Stop Loss в БЕЗУБЫТОК**.
-    -   **HOLD** для дальнейшего роста.
-
-3.  **High Profit (> 15% ROE):**
-    -   Используй **TRAILING STOP**: Двигай Stop Loss вслед за ценой (под EMA21 или локальный минимум).
-    -   **НЕ ДЕЛАЙ CLOSE**, пока цена не выбьет этот скользящий стоп. Позволь забрать максимум движения.
-
----
-
-## 4. РИСК-МЕНЕДЖМЕНТ (Расчеты)
-
-**Рекомендуемые параметры сделки (ADAPTIVE ATR):**
-
-| Тип | Stop Loss (SL) | Take Profit (TP) | Логика |
-|-----|----------------|------------------|--------|
-| **LONG** | ~{max(support - atr*0.5, current_price - atr*atr_sl_mult):.2f} | ~{min(resistance, current_price + atr*atr_tp_mult):.2f} | SL ниже локальной поддержки или ATR |
-| **SHORT**| ~{min(resistance + atr*0.5, current_price + atr*atr_sl_mult):.2f} | ~{max(support, current_price - atr*atr_tp_mult):.2f} | SL выше локального хая или ATR |
-
-*Ты можешь корректировать эти уровни, если видишь более сильные технические уровни в `History`.*
-
----
-
-## 5. ИСТОРИЯ ЦЕН (Context)
-```
-Time|Open|High|Low|Close|Vol|RSI|SMA|SEB_U|SEB_L|Pattern
-{candle_history}
-```
-{news_section}
----
-
-## ФОРМАТ ОТВЕТА
-
-**CRITICAL INSTRUCTION:**
-Return **ONLY** valid JSON.
-DO NOT write "Here is the JSON...".
-DO NOT write "Evaluation...".
-DO NOT use markdown code blocks (```json ... ```).
-JUST THE RAW JSON OBJECT.
-
-{{
-    "action": "buy" | "sell" | "close" | "close_partial" | "hold",
-    "confidence": float (0.0-1.0, threshold: {min_confidence}),
-    "percentage": float (0.3-1.0 for close_partial),
-    "stop_loss": float (Price),
-    "take_profit": float (Price),
-
-    "reason": "СТРОГО: [SETUP_TYPE] | [KEY_REASON] | [RISK_LEVEL]"
-}}
-
-
-Пример reason:
-- "Momentum Breakout | 3 Green Candles + Vol Surge | Risk: Low"
-- "Trend Pullback | EMA9 Support Rejection | Risk: Medium"
-- "Hold | Choppy Market, No Clear Trend | Risk: High"
-"""
+    prompt = PromptBuilder.build(STRATEGY_STYLE, prompt_ctx)
 
     return {
         "symbol": symbol,

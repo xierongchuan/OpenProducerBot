@@ -19,6 +19,10 @@ class TestPromptGeneration(unittest.TestCase):
         self.mock_news = [{"timestamp": "10:00", "title": "Good News", "description": "Bitcoin is up"}]
         self.symbol = "BTC/USD"
         
+        # Очищаем кеш блоков промптов перед каждым тестом
+        import src.prompts.builder as _builder
+        _builder._block_cache.clear()
+
         # Mock file operations
         self.file_patcher = patch('builtins.open', new_callable=unittest.mock.mock_open)
         self.mock_file = self.file_patcher.start()
@@ -53,37 +57,35 @@ class TestPromptGeneration(unittest.TestCase):
     def test_prompt_news_disabled(self):
         """Test prompt generation when ENABLE_NEWS is False"""
         self._json_call_count = 0 # Reset counter
-        # Patch ENABLE_NEWS in src.core.analyzer
         with patch('src.core.analyzer.ENABLE_NEWS', False):
             from src.core.analyzer import analyze_symbol
-            
+
             result = analyze_symbol(self.symbol)
             prompt = result['prompt']
-            
-            # Assertions
-            self.assertNotIn("### НОВОСТНОЙ ФОН", prompt)
-            self.assertNotIn("СЦЕНАРИЙ А", prompt)
-            self.assertNotIn("СЦЕНАРИЙ Б", prompt)
-            self.assertIn("ЕСЛИ НЕТ ПОЗИЦИИ (ВХОД - ЧИСТАЯ ТЕХНИКА)", prompt)
+
+            # Новости не должны быть в промпте
+            self.assertNotIn("НОВОСТНОЙ ФОН", prompt)
+            # Основные секции должны быть на месте
+            self.assertIn("РОЛЬ И ЗАДАЧА", prompt)
+            self.assertIn("СТРАТЕГИЯ", prompt)
+            self.assertIn("ФОРМАТ ОТВЕТА", prompt)
             print("\n[SUCCESS] News Disabled Prompt Verified")
 
     def test_prompt_news_enabled(self):
         """Test prompt generation when ENABLE_NEWS is True"""
         self._json_call_count = 0 # Reset counter
-        # Patch ENABLE_NEWS in src.core.analyzer
         with patch('src.core.analyzer.ENABLE_NEWS', True):
             from src.core.analyzer import analyze_symbol
-            
+
             result = analyze_symbol(self.symbol)
             prompt = result['prompt']
-            
-            # Assertions
-            self.assertIn("### НОВОСТНОЙ ФОН", prompt)
+
+            # Новости должны быть в промпте
+            self.assertIn("НОВОСТНОЙ ФОН", prompt)
             self.assertIn("Good News", prompt)
-            self.assertNotIn("СЦЕНАРИЙ А", prompt)
-            self.assertNotIn("СЦЕНАРИЙ Б", prompt)
-            self.assertIn("ЕСЛИ НЕТ ПОЗИЦИИ (ВХОД):", prompt)
-            self.assertIn("Позитивные новости", prompt)
+            # Основные секции на месте
+            self.assertIn("РОЛЬ И ЗАДАЧА", prompt)
+            self.assertIn("СТРАТЕГИЯ", prompt)
             print("\n[SUCCESS] News Enabled Prompt Verified")
 
 if __name__ == '__main__':

@@ -1,0 +1,6 @@
+## 5. ИСТОРИЯ ЦЕН (Context)
+```
+Time|Open|High|Low|Close|Vol|RSI|SMA|SEB_U|SEB_L|Pattern
+{candle_history}
+```
+{news_section}

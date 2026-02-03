@@ -769,6 +769,38 @@ def analyze_symbol(symbol, position=None, decision_context=""):
     elif trends_aligned and volume_ratio > _mom_trend_vol:
         is_momentum_market = True
 
+    # === HYBRID MODE: Deterministic Signal Generation ===
+    from src.config import STRATEGY_STYLE
+
+    signal_data = None
+    close_signal = None
+
+    if STRATEGY_STYLE == "HYBRID":
+        from src.core.signal_generator import generate_signal, should_close
+
+        # Подготавливаем данные для генератора сигналов
+        signal_input = {
+            "global_trend": global_trend,
+            "local_trend": local_trend,
+            "rsi": rsi,
+            "volume_ratio": volume_ratio,
+            "current_price": current_price,
+            "support": support,
+            "resistance": resistance,
+            "ema9": ema9,
+            "ema21": ema21,
+        }
+
+        # Генерируем детерминированный сигнал
+        signal_data = generate_signal(signal_input)
+        info(f"🔧 [HYBRID] Generated signal: {signal_data['signal']} (score: {signal_data['score']})")
+
+        # Проверяем условия закрытия позиции
+        if position:
+            close_signal = should_close(signal_input, position)
+            if close_signal.get("should_close"):
+                info(f"🔧 [HYBRID] Close signal: {close_signal['reason']}")
+
     # === СБОРКА ПРОМПТА ===
     from src.prompts.builder import PromptBuilder
 
@@ -815,6 +847,9 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         "min_confidence": min_confidence,
         "is_momentum_market": is_momentum_market,
         "decision_history": decision_context,
+        # HYBRID mode specific
+        "signal_data": signal_data,
+        "close_signal": close_signal,
     }
 
     prompt = PromptBuilder.build(STRATEGY_STYLE, prompt_ctx)
@@ -831,8 +866,11 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         "global_trend": global_trend,
         "local_trend": local_trend,
         "has_position": bool(position),
-        "position": position,  # <-- Added full position object
-        "prompt": prompt.strip()
+        "position": position,
+        "prompt": prompt.strip(),
+        # HYBRID mode specific
+        "signal_data": signal_data,
+        "close_signal": close_signal,
     }
 
 def main():

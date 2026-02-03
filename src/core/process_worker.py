@@ -60,9 +60,38 @@ def run_symbol_pipeline(symbol: str):
                         info(f"⏳ [{symbol}] Position age: {position_age:.1f}h < min_hold: {min_hold_hours}h. Forcing HOLD")
                         analysis_result["force_hold"] = True
 
-                # 5. Прогноз (AI)
-                with StageTimer("AI Прогноз", symbol, "🧠"):
-                    prediction = predict.process_analysis(analysis_result)
+                # 5. Прогноз (AI) - HYBRID mode optimization
+                if STRATEGY_STYLE == "HYBRID":
+                    signal_data = analysis_result.get("signal_data", {})
+                    signal = signal_data.get("signal", "HOLD")
+
+                    if signal == "HOLD" and not real_position:
+                        # No signal from deterministic system - skip AI call
+                        info(f"🔧 [{symbol}] HYBRID: No signal (score: {signal_data.get('score', 0)}) - skipping AI")
+                        prediction = {
+                            "symbol": symbol,
+                            "action": "hold",
+                            "confidence": 0.0,
+                            "reason": f"[HYBRID] No deterministic signal (score: {signal_data.get('score', 0)})",
+                            "current_price": analysis_result.get("current_price", 0)
+                        }
+                    else:
+                        # Signal exists - ask AI to confirm/reject
+                        with StageTimer("AI Filter", symbol, "🧠"):
+                            info(f"🔧 [{symbol}] HYBRID: Signal {signal} - asking AI to confirm")
+                            prediction = predict.process_analysis(analysis_result)
+
+                            # HYBRID constraint: AI cannot generate opposite signal
+                            if signal in ("BUY", "SELL"):
+                                ai_action = prediction.get("action", "hold").upper()
+                                if ai_action not in (signal, "HOLD", "CLOSE", "CLOSE_PARTIAL"):
+                                    info(f"🔧 [{symbol}] HYBRID: AI tried {ai_action} but signal was {signal} - forcing HOLD")
+                                    prediction["action"] = "hold"
+                                    prediction["reason"] = f"[HYBRID] AI rejected {signal} signal"
+                else:
+                    # Non-HYBRID mode - standard AI prediction
+                    with StageTimer("AI Прогноз", symbol, "🧠"):
+                        prediction = predict.process_analysis(analysis_result)
 
                 # Проверка cooldown (если нет позиции и хотим открыть)
                 cooldown_hours = preset.get("cooldown_after_close_hours", 0)
@@ -120,6 +149,11 @@ def run_symbol_pipeline(symbol: str):
                     # If searching: Relax based on strategy
                     sleep_time = base_interval
                     info(f"✅ [{symbol}] Цикл завершён ({elapsed:.2f}s). 💤 Поиск ({STRATEGY_STYLE}) -> Sleep {sleep_time}s")
+
+                # Jitter: добавляем случайный разброс ±20% чтобы процессы не синхронизировались
+                import random
+                jitter = random.uniform(-0.2, 0.2) * sleep_time
+                sleep_time = max(5, sleep_time + jitter)  # Минимум 5 секунд
 
             except KeyboardInterrupt:
                 info(f"🛑 [{symbol}] Остановка по запросу (KeyboardInterrupt)")

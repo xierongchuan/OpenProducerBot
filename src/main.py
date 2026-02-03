@@ -120,27 +120,45 @@ def run_pipeline():
 def run_multiprocess_pipeline():
     """Запускает отдельный процесс для каждого символа (Multiprocessing)"""
     import multiprocessing
-    from src.config import SYMBOLS
+    from src.config import SYMBOLS, STRATEGY_STYLE, BOT_CONFIG
     from src.core.process_worker import run_symbol_pipeline
     from src.core.chart_worker import run_chart_worker
 
     print("\n🚀 Запуск мультипроцессного пайплайна...")
     info("🚀 Запуск мультипроцессного пайплайна...")
+    info(f"📋 Режим стратегии: {STRATEGY_STYLE}")
 
     processes = []
 
     # 1. Запускаем торговые процессы (по одному на символ)
     for symbol in SYMBOLS:
-        p = multiprocessing.Process(
-            target=run_symbol_pipeline,
-            args=(symbol,),
-            name=f"Worker-{symbol}"
-        )
+        # Выбираем воркер в зависимости от стратегии
+        if STRATEGY_STYLE == "GRID":
+            from src.core.grid_worker import run_grid_worker
+            grid_config = BOT_CONFIG.get("GRID_SETTINGS", {})
+            p = multiprocessing.Process(
+                target=run_grid_worker,
+                args=(symbol, grid_config),
+                name=f"GridWorker-{symbol}"
+            )
+            worker_type = "Grid"
+        else:
+            p = multiprocessing.Process(
+                target=run_symbol_pipeline,
+                args=(symbol,),
+                name=f"Worker-{symbol}"
+            )
+            worker_type = STRATEGY_STYLE
+
         p.daemon = True
         processes.append(p)
         p.start()
-        print(f"   🔄 Запущен торговый процесс для {symbol} (PID: {p.pid})")
-        info(f"🔄 Запущен торговый процесс для {symbol} (PID: {p.pid})")
+        print(f"   🔄 Запущен {worker_type} процесс для {symbol} (PID: {p.pid})")
+        info(f"🔄 Запущен {worker_type} процесс для {symbol} (PID: {p.pid})")
+
+        # Staggered start: задержка между запуском процессов чтобы не перегрузить API
+        if len(SYMBOLS) > 5:
+            time.sleep(2)  # 2 секунды между запусками при >5 символов
 
     # 2. Запускаем отдельный процесс для графиков
     chart_p = multiprocessing.Process(

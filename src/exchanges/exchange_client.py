@@ -54,3 +54,28 @@ class ExchangeClient(ABC):
         Returns True if successful, False otherwise.
         """
         pass
+
+    @abstractmethod
+    def get_order_book(self, symbol: str, limit: int = 20) -> dict:
+        """
+        Retrieves the order book (depth) for a symbol.
+        Returns: {"bids": [[price, qty], ...], "asks": [[price, qty], ...]}
+        Bids sorted descending (best bid first), asks sorted ascending (best ask first).
+        """
+        pass
+
+    @abstractmethod
+    def get_ticker(self, symbol: str) -> dict:
+        """
+        Retrieves current ticker data including best bid/ask.
+        Returns: {"bid": float, "ask": float, "last": float, "volume": float}
+        """
+        pass
+
+    @abstractmethod
+    def cancel_all_orders(self, symbol: str) -> bool:
+        """
+        Cancels all open orders for a symbol.
+        Returns True if successful, False otherwise.
+        """
+        pass

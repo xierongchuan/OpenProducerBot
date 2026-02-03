@@ -635,5 +635,126 @@ class BingXClient(ExchangeClient):
             else:
                 error(f"❌ Cannot set SL: Position size unknown for {symbol}")
 
+    def _format_symbol(self, symbol: str) -> str:
+        """Централизованное форматирование символа для BingX API."""
+        if symbol.endswith("/USD"):
+            return symbol.replace("/USD", "-USDT")
+        elif symbol.endswith("USDT") and "-" not in symbol and "/" not in symbol:
+            return symbol[:-4] + "-USDT"
+        return symbol.replace("/", "-")
+
+    def get_order_book(self, symbol: str, limit: int = 20) -> dict:
+        """
+        Получает стакан заявок (order book / depth).
+        Returns: {"bids": [[price, qty], ...], "asks": [[price, qty], ...]}
+        Bids sorted descending (best bid first), asks sorted ascending (best ask first).
+        """
+        formatted_symbol = self._format_symbol(symbol)
+
+        # Публичный endpoint - используем основной URL
+        market_url = "https://open-api.bingx.com/openApi/swap/v2/quote/depth"
+
+        params = {
+            "symbol": formatted_symbol,
+            "limit": min(limit, 100)  # BingX max limit is 100
+        }
+
+        max_retries = 3
+        retry_delay = 1
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(market_url, params=params, timeout=6)
+                response.raise_for_status()
+                data = response.json()
+
+                if data and data.get("code") == 0:
+                    depth_data = data.get("data", {})
+                    return {
+                        "bids": [[float(b[0]), float(b[1])] for b in depth_data.get("bids", [])],
+                        "asks": [[float(a[0]), float(a[1])] for a in depth_data.get("asks", [])]
+                    }
+                else:
+                    error(f"❌ Failed to get order book: {data}")
+                    return {"bids": [], "asks": []}
+
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                warning(f"⚠️ Order book request error (attempt {attempt+1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+            except Exception as e:
+                error(f"❌ Order book request failed: {e}")
+                return {"bids": [], "asks": []}
+
+        return {"bids": [], "asks": []}
+
+    def get_ticker(self, symbol: str) -> dict:
+        """
+        Получает текущий тикер с лучшими bid/ask ценами.
+        Returns: {"bid": float, "ask": float, "last": float, "volume": float}
+        """
+        formatted_symbol = self._format_symbol(symbol)
+
+        # Публичный endpoint
+        market_url = "https://open-api.bingx.com/openApi/swap/v2/quote/ticker"
+
+        params = {"symbol": formatted_symbol}
+
+        max_retries = 3
+        retry_delay = 1
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(market_url, params=params, timeout=6)
+                response.raise_for_status()
+                data = response.json()
+
+                if data and data.get("code") == 0:
+                    ticker_data = data.get("data", {})
+                    return {
+                        "bid": float(ticker_data.get("bestBidPrice", 0) or 0),
+                        "ask": float(ticker_data.get("bestAskPrice", 0) or 0),
+                        "last": float(ticker_data.get("lastPrice", 0) or 0),
+                        "volume": float(ticker_data.get("volume", 0) or 0)
+                    }
+                else:
+                    error(f"❌ Failed to get ticker: {data}")
+                    return {"bid": 0, "ask": 0, "last": 0, "volume": 0}
+
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                warning(f"⚠️ Ticker request error (attempt {attempt+1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+            except Exception as e:
+                error(f"❌ Ticker request failed: {e}")
+                return {"bid": 0, "ask": 0, "last": 0, "volume": 0}
+
+        return {"bid": 0, "ask": 0, "last": 0, "volume": 0}
+
+    def cancel_all_orders(self, symbol: str) -> bool:
+        """
+        Отменяет все открытые ордера для символа.
+        Returns True if successful, False otherwise.
+        """
+        formatted_symbol = self._format_symbol(symbol)
+        endpoint = "/openApi/swap/v2/trade/allOpenOrders"
+
+        params = {"symbol": formatted_symbol}
+
+        response = self.make_request("delete", endpoint, params)
+
+        if response and response.get("code") == 0:
+            info(f"✅ All orders cancelled for {symbol}")
+            return True
+        else:
+            # Code 80014 might mean no orders to cancel - that's OK
+            if response and response.get("code") == 80014:
+                info(f"ℹ️ No open orders to cancel for {symbol}")
+                return True
+            error(f"❌ Failed to cancel all orders for {symbol}: {response}")
+            return False
+
 # Global instance
 bingx_client = BingXClient()

@@ -1,7 +1,22 @@
 {
   "EXCHANGE_SYMBOLS": {
     "bingx": [
-      "SUIUSDT"
+      "BTCUSDT",
+      "ETCUSDT",
+      "LTCUSDT",
+      "XRPUSDT",
+      "BCHUSDT",
+      "ADAUSDT",
+      "DOTUSDT",
+      "LINKUSDT",
+      "XLMUSDT",
+      "DOGEUSDT",
+      "SOLUSDT",
+      "AVAXUSDT",
+      "UNIUSDT",
+      "ATOMUSDT",
+      "ALGOUSDT",
+      "TRXUSDT"
     ]
   },
   "EXCHANGE_FEES": {
@@ -138,7 +153,8 @@
     "max_entries": {
       "SCALP": 5,
       "INTRADAY": 10,
-      "SWING": 50
+      "SWING": 50,
+      "GRID": 20
     }
   },
   "POSITION_LIMITS": {
@@ -207,15 +223,13 @@
   },
   "MOMENTUM_STRATEGY": {
     "enabled": true,
-    "atr_sl_multiplier": 1.5,
-    "atr_tp_multiplier": 2.0,
     "min_volume_ratio": 0.5,
     "max_candles_in_prompt": 50,
     "trend_consensus_required": false,
     "momentum_entry_enabled": true,
     "momentum_consecutive_candles": 3
   },
-  "STRATEGY_STYLE": "SCALP",
+  "STRATEGY_STYLE": "HYBRID",
   "STYLE_PRESETS": {
     "SCALP": {
       "timeframe": "1m",
@@ -251,6 +265,59 @@
       "min_hold_hours": 24,
       "cooldown_after_close_hours": 6,
       "description": "Multi-day holding (Days/Weeks), wide stops, ignoring intraday noise."
+    },
+    "GRID": {
+      "timeframe": "1m",
+      "chart_period": "1D",
+      "plotter_period": "6h",
+      "loop_interval": 5,
+      "position_check_interval": 5,
+      "leverage": 5,
+      "description": "Grid trading - earn on volatility through limit order grid."
+    },
+    "HYBRID": {
+      "timeframe": "5m",
+      "chart_period": "1D",
+      "plotter_period": "6h",
+      "loop_interval": 120,
+      "position_check_interval": 30,
+      "atr_sl_mult": 1.5,
+      "atr_tp_mult": 2.5,
+      "leverage": 10,
+      "description": "Deterministic signals + AI filter. Most reliable mode."
     }
+  },
+  "HYBRID_SETTINGS": {
+    "enabled": true,
+    "signal_rules": {
+      "trend_alignment_required": true,
+      "min_volume_ratio": 0.7,
+      "rsi_long_max": 65,
+      "rsi_long_min": 35,
+      "rsi_short_max": 65,
+      "rsi_short_min": 35,
+      "require_sr_proximity": true,
+      "sr_proximity_pct": 1.0,
+      "ema_cross_weight": 2,
+      "rsi_zone_weight": 1,
+      "volume_weight": 1,
+      "sr_weight": 2,
+      "min_score_for_signal": 4
+    },
+    "ai_filter": {
+      "enabled": true,
+      "can_generate_signals": false,
+      "min_confidence_to_approve": 0.6
+    }
+  },
+  "GRID_SETTINGS": {
+    "enabled": true,
+    "grid_levels": 5,
+    "grid_spacing_pct": 0.3,
+    "order_size_usdt": 10,
+    "inventory_limit": 100,
+    "check_interval": 5,
+    "ai_rebalance_interval": 120,
+    "emergency_stop_loss_pct": 5.0
   }
 }

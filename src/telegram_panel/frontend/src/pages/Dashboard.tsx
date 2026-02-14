@@ -79,13 +79,13 @@ export function Dashboard({ subscribe }: { subscribe: (type: string, cb: (data: 
         />
         <StatsCard
           label="Total P&L"
-          value={stats ? `$${stats.total_pnl.toFixed(2)}` : '$0.00'}
-          trend={stats && stats.total_pnl > 0 ? 'up' : stats && stats.total_pnl < 0 ? 'down' : 'neutral'}
+          value={stats ? `$${(stats.total_pnl ?? 0).toFixed(2)}` : '$0.00'}
+          trend={stats && (stats.total_pnl ?? 0) > 0 ? 'up' : stats && (stats.total_pnl ?? 0) < 0 ? 'down' : 'neutral'}
         />
         <StatsCard
           label="Win Rate"
-          value={stats ? `${stats.win_rate}%` : '0%'}
-          trend={stats && stats.win_rate > 50 ? 'up' : 'neutral'}
+          value={stats ? `${stats.win_rate ?? 0}%` : '0%'}
+          trend={stats && (stats.win_rate ?? 0) > 50 ? 'up' : 'neutral'}
         />
         <StatsCard
           label="Total Trades"

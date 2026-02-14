@@ -87,6 +87,12 @@ export function getJournal(symbol?: string) {
   return fetchAPI<JournalEntry[]>(path);
 }
 
+export function syncPositions() {
+  return fetchAPI<{ status: string; removed: number; removed_symbols?: string[]; remaining: number }>('/api/trades/sync', {
+    method: 'POST',
+  });
+}
+
 export function disableSymbol(symbol: string) {
   return fetchAPI<{ status: string }>(`/api/trades/disable/${encodeURIComponent(symbol)}`, {
     method: 'POST',

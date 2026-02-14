@@ -155,6 +155,64 @@ async def get_disabled_symbols(
     return {"disabled_symbols": config.get("DISABLED_SYMBOLS", [])}
 
 
+@router.post("/sync")
+async def sync_positions(_user: dict = Depends(get_current_user)) -> dict:
+    """Sync active_trades.json with actual exchange positions.
+
+    Removes stale trades that no longer exist on the exchange,
+    detects manually closed positions.
+    """
+    project_root = get_project_root()
+    active_path = project_root / "data" / "active_trades.json"
+    history_path = project_root / "data" / "trade_history.json"
+
+    active = read_json(active_path)
+    if not isinstance(active, dict):
+        active = {}
+
+    if not active:
+        return {"status": "ok", "removed": 0, "remaining": 0}
+
+    try:
+        import sys
+        sys.path.insert(0, str(project_root))
+        from src.exchanges.exchange_factory import get_exchange_client
+
+        client = get_exchange_client()
+        real_positions = client.get_positions()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Exchange error: {e}")
+
+    # Find stale symbols (in file but not on exchange)
+    removed = []
+    for symbol in list(active.keys()):
+        symbol_positions = real_positions.get(symbol, [])
+        if not symbol_positions:
+            # Position closed on exchange — archive it
+            trade = active.pop(symbol)
+            trade["status"] = "CLOSED"
+            trade["close_time"] = datetime.now().isoformat()
+            trade["reason"] = "MANUAL_CLOSE_SYNC"
+
+            history = read_json(history_path)
+            if not isinstance(history, list):
+                history = []
+            history.append(trade)
+            write_json(history_path, history)
+
+            removed.append(symbol)
+
+    if removed:
+        write_json(active_path, active)
+
+    return {
+        "status": "ok",
+        "removed": len(removed),
+        "removed_symbols": removed,
+        "remaining": len(active),
+    }
+
+
 @router.post("/close/{symbol}")
 async def close_position_by_symbol(
     symbol: str,

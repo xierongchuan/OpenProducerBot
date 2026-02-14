@@ -19,14 +19,25 @@ export function App() {
   const { subscribe, isConnected } = useWebSocket();
   useTelegram();
 
-  // Проверка авторизации при загрузке
+  // Проверка авторизации при загрузке (с retry для Telegram SDK race condition)
   useEffect(() => {
-    getDashboard()
-      .then(() => setAuthChecked(true))
-      .catch((err) => {
-        setAuthError(err instanceof Error ? err.message : 'Ошибка авторизации');
-        setAuthChecked(true);
-      });
+    let cancelled = false;
+    const tryAuth = (attempt: number) => {
+      getDashboard()
+        .then(() => { if (!cancelled) setAuthChecked(true); })
+        .catch((err) => {
+          if (cancelled) return;
+          // Retry once after 800ms (SDK might not be ready)
+          if (attempt < 2) {
+            setTimeout(() => tryAuth(attempt + 1), 800);
+            return;
+          }
+          setAuthError(err instanceof Error ? err.message : 'Ошибка авторизации');
+          setAuthChecked(true);
+        });
+    };
+    tryAuth(0);
+    return () => { cancelled = true; };
   }, []);
 
   const handleTabChange = useCallback((tab: TabId) => {
@@ -46,12 +57,18 @@ export function App() {
   if (authError) {
     return (
       <div className="h-full flex items-center justify-center p-8">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="text-4xl">🔒</div>
-          <p className="text-sm text-red-400">{authError}</p>
-          <p className="text-xs text-tg-hint">
+        <div className="flex flex-col items-center gap-4 text-center max-w-xs">
+          <div className="text-5xl">🔒</div>
+          <p className="text-base font-semibold text-red-400">{authError}</p>
+          <p className="text-sm text-tg-text/70">
             Используйте кнопку «Open Panel» в Telegram-боте
           </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 px-4 py-2 bg-tg-button text-tg-button-text text-sm rounded-lg"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );

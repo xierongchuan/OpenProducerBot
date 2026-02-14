@@ -19,7 +19,7 @@ export function TradeCard({ trade, disabledSymbols = [], onUpdate }: {
 }) {
   const [loading, setLoading] = useState(false);
   const isLong = trade.side === 'LONG';
-  const pnl = trade.last_pnl;
+  const pnl = trade.last_pnl ?? 0;
   const pnlPositive = pnl >= 0;
 
   // Check if this symbol is disabled (compare both formats)

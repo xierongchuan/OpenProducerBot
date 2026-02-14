@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getActiveTrades, getTradeHistory, getTradeStats, getDisabledSymbols } from '../api/client';
+import { getActiveTrades, getTradeHistory, getTradeStats, getDisabledSymbols, syncPositions } from '../api/client';
 import type { Trade, TradeStats } from '../api/types';
 import { TradeCard } from '../components/TradeCard';
 import { StatsCard } from '../components/StatsCard';
@@ -15,6 +15,7 @@ export function Trades({ subscribe }: { subscribe: (type: string, cb: (data: Rec
   const [loading, setLoading] = useState(true);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [disabledSymbols, setDisabledSymbols] = useState<string[]>([]);
+  const [syncing, setSyncing] = useState(false);
 
   const fetchActive = useCallback(async () => {
     try {
@@ -51,6 +52,19 @@ export function Trades({ subscribe }: { subscribe: (type: string, cb: (data: Rec
     fetchDisabled();
   }, [fetchActive, fetchDisabled]);
 
+  const handleSync = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await syncPositions();
+      await Promise.all([fetchActive(), fetchHistory(), fetchStats()]);
+    } catch (e) {
+      console.error('Sync failed:', e);
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, fetchActive, fetchHistory, fetchStats]);
+
   useEffect(() => {
     Promise.all([fetchActive(), fetchHistory(), fetchStats(), fetchDisabled()]).finally(() => setLoading(false));
   }, [fetchActive, fetchHistory, fetchStats, fetchDisabled]);
@@ -76,13 +90,22 @@ export function Trades({ subscribe }: { subscribe: (type: string, cb: (data: Rec
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <span className="text-lg font-semibold text-tg-text">Trades</span>
+      <div className="flex items-center justify-between">
+        <span className="text-lg font-semibold text-tg-text">Trades</span>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="text-xs px-3 py-1.5 rounded-lg bg-tg-button/20 text-tg-button hover:bg-tg-button/30 disabled:opacity-50 transition-colors"
+        >
+          {syncing ? '⏳ Syncing…' : '🔄 Sync'}
+        </button>
+      </div>
 
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-3 gap-2">
-          <StatsCard label="Win Rate" value={`${stats.win_rate}%`} trend={stats.win_rate > 50 ? 'up' : 'neutral'} />
-          <StatsCard label="P&L" value={`$${stats.total_pnl.toFixed(2)}`} trend={stats.total_pnl > 0 ? 'up' : stats.total_pnl < 0 ? 'down' : 'neutral'} />
+          <StatsCard label="Win Rate" value={`${stats.win_rate ?? 0}%`} trend={(stats.win_rate ?? 0) > 50 ? 'up' : 'neutral'} />
+          <StatsCard label="P&L" value={`$${(stats.total_pnl ?? 0).toFixed(2)}`} trend={(stats.total_pnl ?? 0) > 0 ? 'up' : (stats.total_pnl ?? 0) < 0 ? 'down' : 'neutral'} />
           <StatsCard label="Trades" value={stats.total_trades} />
         </div>
       )}

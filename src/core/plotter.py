@@ -582,7 +582,7 @@ def plot_symbol(symbol, time_range=None, current_position=None):
     fig.autofmt_xdate()
 
     # Убираем отступы по краям (слева и справа)
-    if len(dates) > 0:
+    if len(dates) > 1:
         ax1.set_xlim(dates[0], dates[-1])
 
     # Сохраняем с высоким разрешением (перезаписываем файл)

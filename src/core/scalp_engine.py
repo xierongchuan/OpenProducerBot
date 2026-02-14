@@ -11,14 +11,17 @@ Key classes:
   ScalpSession — risk limits, cooldowns, daily/hourly loss tracking
 """
 
+import json
+import os
 import time
 import threading
 import traceback
 from typing import Dict, Optional
 
-from src.config import SCALP_SETTINGS, LEVERAGE, ERROR_HANDLING
+from src.config import SCALP_SETTINGS, LEVERAGE, ERROR_HANDLING, DATA_DIR
 from src.config import should_reload_config, reload_bot_config
 from src.utils.logger import setup_symbol_logger, info, error, warning
+from src.utils.helpers import get_filename
 
 
 class TrailingStopManager:
@@ -550,12 +553,15 @@ class ScalpEngine:
                     if candles:
                         self._analyzer.bootstrap(candles)
 
-                # 8. Log session stats
+                # 8. Dump candles to price file (for chart worker)
+                self._dump_prices()
+
+                # 9. Log session stats
                 stats = self._session.stats
                 info(f"[SCALP] {self.symbol}: Session: trades={stats['trades_today']} "
                      f"PnL={stats['daily_pnl_pct']:.2f}% W/L={stats['wins']}/{stats['losses']}")
 
-                # 9. Periodic calibration check
+                # 10. Periodic calibration check
                 self._slow_cycle += 1
                 if (self._calibrator and self._calibration_interval > 0
                         and self._slow_cycle % self._calibration_interval == 0):
@@ -1183,6 +1189,20 @@ class ScalpEngine:
 
         except Exception as e:
             warning(f"[SCALP-L3] {self.symbol}: Veto error: {e}")
+
+    def _dump_prices(self):
+        """Dump WS cache candles to data/prices/ for chart worker."""
+        try:
+            candles = self._get_candles(600)
+            if not candles:
+                return
+            prices_dir = os.path.join(DATA_DIR, "prices")
+            os.makedirs(prices_dir, exist_ok=True)
+            prices_file = os.path.join(prices_dir, f"{get_filename(self.symbol)}.json")
+            with open(prices_file, "w") as f:
+                json.dump(candles, f)
+        except Exception as e:
+            warning(f"[SCALP] {self.symbol}: Price dump failed: {e}")
 
     def _get_candles(self, limit: int = 5) -> list:
         """Get candles from WS cache, fallback to REST."""

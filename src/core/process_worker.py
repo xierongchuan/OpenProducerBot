@@ -33,11 +33,20 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
 
         info(f"🚀 [PROCESS START] Запущен бесконечный процесс для {symbol} (PID: {os.getpid()})")
 
+        # Check if SCALP mode — use dedicated engine
+        from src.config import STRATEGY_STYLE
+        if STRATEGY_STYLE == "SCALP":
+            info(f"⚡ [{symbol}] SCALP mode — launching ScalpEngine")
+            from src.core.scalp_engine import ScalpEngine
+            engine = ScalpEngine(symbol, ws_cache=ws_cache, ws_ready=ws_ready)
+            engine.run()  # Blocks forever
+            return
+
         # Импортируем модули один раз
         from src.core import collector, analyzer, predict, executor, monitor, plotter
         from src.core.trade_tracker import TradeTracker
         from src.core.decision_journal import DecisionJournal
-        from src.config import STRATEGY_STYLE, ERROR_HANDLING
+        from src.config import ERROR_HANDLING
         from src.config import should_reload_config, reload_bot_config
 
         tracker = TradeTracker()

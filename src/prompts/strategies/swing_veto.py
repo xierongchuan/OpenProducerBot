@@ -38,7 +38,7 @@ class SwingVetoStrategy(BaseStrategy):
         return "SWING: 2-14 days. Minimum hold: 24 hours."
 
     def get_strategy_section(self, ctx: dict) -> str:
-        signal_data = ctx.get("signal_data", {})
+        signal_data = ctx.get("signal_data") or {}
         signal = signal_data.get("signal", "HOLD")
         score = signal_data.get("score", 0)
         max_score = signal_data.get("max_score", 10)

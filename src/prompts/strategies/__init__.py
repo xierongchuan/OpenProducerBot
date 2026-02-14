@@ -1,4 +1,6 @@
 from src.prompts.strategies.scalp import ScalpStrategy
+from src.prompts.strategies.scalp_veto import ScalpVetoStrategy
+from src.prompts.strategies.scalp_regime import ScalpRegimeStrategy
 from src.prompts.strategies.intraday import IntradayStrategy
 from src.prompts.strategies.swing import SwingStrategy
 from src.prompts.strategies.swing_veto import SwingVetoStrategy
@@ -8,6 +10,8 @@ from src.prompts.strategies.hybrid_veto import HybridVetoStrategy
 
 STRATEGIES = {
     "SCALP": ScalpStrategy,
+    "SCALP_VETO": ScalpVetoStrategy,
+    "SCALP_REGIME": ScalpRegimeStrategy,
     "INTRADAY": IntradayStrategy,
     "SWING": SwingStrategy,
     "SWING_VETO": SwingVetoStrategy,

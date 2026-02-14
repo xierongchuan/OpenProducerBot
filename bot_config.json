@@ -249,12 +249,12 @@
       "timeframe": "1m",
       "chart_period": "6h",
       "plotter_period": "30m",
-      "loop_interval": 5,
+      "loop_interval": 1.5,
       "position_check_interval": 1,
-      "atr_sl_mult": 1.5,
-      "atr_tp_mult": 2,
+      "atr_sl_mult": 1.0,
+      "atr_tp_mult": 3.0,
       "leverage": 15,
-      "description": "High frequency, small moves, strict exits."
+      "description": "Dual-loop scalp engine with deterministic signals and trailing stops."
     },
     "INTRADAY": {
       "timeframe": "5m",
@@ -400,5 +400,84 @@
     "check_interval": 5,
     "ai_rebalance_interval": 120,
     "emergency_stop_loss_pct": 5
+  },
+  "SCALP_SETTINGS": {
+    "enabled": true,
+    "signal_rules": {
+      "ema_periods": [5, 13],
+      "ema_macro": 21,
+      "rsi_period": 7,
+      "macd_params": [6, 13, 5],
+      "atr_period": 10,
+      "atr_fast_period": 5,
+      "bb_period": 20,
+      "bb_std": 2.0,
+      "ema_weight": 2,
+      "momentum_weight": 1,
+      "rsi_weight": 2,
+      "vwap_weight": 1,
+      "volume_weight": 1,
+      "ob_imbalance_weight": 1,
+      "macd_weight": 1,
+      "bb_weight": 1,
+      "rsi_long_zone": [25, 40],
+      "rsi_short_zone": [60, 75],
+      "ob_imbalance_threshold": 0.3,
+      "min_score_for_signal": 4,
+      "auto_execute_quality": 0.6,
+      "tier1_required": true,
+      "conflict_friction_threshold": 2
+    },
+    "sl_tp": {
+      "sl_atr_mult": 1.0,
+      "tp_atr_mult": 3.0,
+      "trailing_activation_mult": 1.5,
+      "trailing_distance_mult": 0.5,
+      "trailing_mode": "atr"
+    },
+    "breakeven": {
+      "enabled": true,
+      "trigger_pct": 0.3,
+      "fee_buffer_pct": 0.05
+    },
+    "time_exit": {
+      "max_hold_minutes": 15,
+      "breakeven_timeout_minutes": 8
+    },
+    "risk_limits": {
+      "base_position_pct": 5.0,
+      "max_consecutive_losses": 5,
+      "consecutive_loss_cooldown_minutes": 30,
+      "daily_loss_limit_pct": 3.0,
+      "hourly_loss_limit_pct": 1.0,
+      "max_trades_per_hour": 6,
+      "max_trades_per_day": 50,
+      "min_cooldown_seconds": 120
+    },
+    "loops": {
+      "fast_interval": 1.5,
+      "slow_interval": 45
+    },
+    "regime_overrides": {
+      "TRENDING": { "ema_weight": 3, "rsi_weight": 1, "bb_weight": 0, "min_score": 3 },
+      "RANGING": { "ema_weight": 1, "rsi_weight": 3, "bb_weight": 2, "min_score": 6 },
+      "VOLATILE": { "ema_weight": 2, "volume_weight": 2, "min_score": 5 },
+      "TRANSITIONAL": { "min_score": 7 }
+    },
+    "interaction_rules": {
+      "momentum_burst_bonus": 2,
+      "vwap_bounce_bonus": 1,
+      "ob_confluence_bonus": 1,
+      "counter_momentum_penalty": -2,
+      "spike_penalty": -1
+    },
+    "ai_integration": {
+      "regime_enabled": true,
+      "regime_interval_seconds": 300,
+      "veto_enabled": true,
+      "veto_model": "google/gemini-2.0-flash-lite",
+      "borderline_quality_threshold": 0.3,
+      "veto_staleness_seconds": 10
+    }
   }
 }

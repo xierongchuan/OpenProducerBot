@@ -137,7 +137,7 @@ def reload_bot_config() -> dict:
     global SMART_SAMPLING, ENABLE_AI_SKIP_ON_RSI
     global DECISION_JOURNAL, POSITION_LIMITS, VALIDATION
     global TECHNICAL_ANALYSIS, CHART_SETTINGS, ERROR_HANDLING, MOMENTUM_STRATEGY
-    global STRATEGY_STYLE, STYLE_PRESETS
+    global STRATEGY_STYLE, STYLE_PRESETS, SCALP_SETTINGS
     global AI_SETTINGS, AI_MODEL, AI_TEMPERATURE, AI_MAX_TOKENS
     global AI_REASONING, AI_RETRY_COUNT, AI_PROVIDER_ROUTING
     global AI_FALLBACK_MODELS, AI_REQUEST_TIMEOUT, AI_RETRY_BACKOFF_BASE, AI_BASE_URL
@@ -185,6 +185,7 @@ def reload_bot_config() -> dict:
 
     STRATEGY_STYLE = BOT_CONFIG.get("STRATEGY_STYLE", "INTRADAY")
     STYLE_PRESETS = BOT_CONFIG.get("STYLE_PRESETS", DEFAULT_STYLE_PRESETS)
+    SCALP_SETTINGS = BOT_CONFIG.get("SCALP_SETTINGS", SCALP_SETTINGS)
 
     # Reapply style preset
     current_preset = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS.get("INTRADAY", {}))
@@ -296,6 +297,20 @@ MOMENTUM_STRATEGY = BOT_CONFIG.get("MOMENTUM_STRATEGY", {
     "trend_consensus_required": False,
     "momentum_entry_enabled": True,
     "momentum_consecutive_candles": 3
+})
+
+# SCALP Settings (separate from HYBRID/INTRADAY)
+SCALP_SETTINGS = BOT_CONFIG.get("SCALP_SETTINGS", {
+    "enabled": True,
+    "signal_rules": {},
+    "sl_tp": {"sl_atr_mult": 1.0, "tp_atr_mult": 3.0, "trailing_activation_mult": 1.5, "trailing_distance_mult": 0.5},
+    "breakeven": {"enabled": True, "trigger_pct": 0.3, "fee_buffer_pct": 0.05},
+    "time_exit": {"max_hold_minutes": 15, "breakeven_timeout_minutes": 8},
+    "risk_limits": {"base_position_pct": 5.0, "max_consecutive_losses": 5, "daily_loss_limit_pct": 3.0},
+    "loops": {"fast_interval": 1.5, "slow_interval": 45},
+    "regime_overrides": {},
+    "interaction_rules": {},
+    "ai_integration": {"regime_enabled": True, "veto_enabled": True}
 })
 
 # Trading Style Settings (Scalp / Intraday / Swing)

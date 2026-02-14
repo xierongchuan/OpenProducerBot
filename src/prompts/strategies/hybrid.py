@@ -26,7 +26,7 @@ class HybridStrategy(BaseStrategy):
 
     def get_strategy_section(self, ctx: dict) -> str:
         # Извлекаем данные сигнала
-        signal_data = ctx.get("signal_data", {})
+        signal_data = ctx.get("signal_data") or {}
         signal = signal_data.get("signal", "HOLD")
         score = signal_data.get("score", 0)
         max_score = signal_data.get("max_score", 10)
@@ -194,7 +194,7 @@ Your job: assess RISK the scoring system might have missed.
 Ты можешь подтвердить или отклонить рекомендацию на закрытие."""
 
     def get_special_situations(self, ctx: dict) -> str:
-        signal_data = ctx.get("signal_data", {})
+        signal_data = ctx.get("signal_data") or {}
         max_score = signal_data.get("max_score", 10)
 
         return f"""### КОГДА ТОЧНО REJECT

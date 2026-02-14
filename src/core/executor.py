@@ -20,7 +20,7 @@ def get_open_positions():
         error(f"❌ Ошибка получения позиций: {str(e)}")
         return {}
 
-def create_order(symbol, direction, price, ai_sl=None, ai_tp=None, reason="Unknown", confidence=0.0, size_pct=None):
+def create_order(symbol, direction, price, ai_sl=None, ai_tp=None, reason="Unknown", confidence=0.0, size_pct=None, order_type="MARKET"):
     """Создает ордер с TP/SL через ExchangeClient"""
     client = get_exchange_client()
 
@@ -143,7 +143,7 @@ def create_order(symbol, direction, price, ai_sl=None, ai_tp=None, reason="Unkno
             side=direction,
             price=price,
             quantity=quantity,
-            type="MARKET",
+            type=order_type,
             sl=None,
             tp=None
         )

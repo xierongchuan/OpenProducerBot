@@ -166,9 +166,10 @@ class TrailingStopManager:
 
 
 class ScalpSession:
-    """Tracks session state, risk limits, and cooldowns for a symbol."""
+    """Tracks session state, risk limits, cooldowns, and session-aware sizing for a symbol."""
 
-    def __init__(self, symbol: str, config: Optional[Dict] = None):
+    def __init__(self, symbol: str, config: Optional[Dict] = None,
+                 session_config: Optional[Dict] = None):
         self.symbol = symbol
         cfg = config or SCALP_SETTINGS.get("risk_limits", {})
 
@@ -179,6 +180,14 @@ class ScalpSession:
         self._max_trades_per_hour = cfg.get("max_trades_per_hour", 6)
         self._max_trades_per_day = cfg.get("max_trades_per_day", 50)
         self._min_cooldown_sec = cfg.get("min_cooldown_seconds", 120)
+
+        # Session-aware trading config
+        sa_cfg = session_config or SCALP_SETTINGS.get("session_awareness", {})
+        self._session_aware_enabled = sa_cfg.get("enabled", False)
+        self._peak_hours = sa_cfg.get("peak_hours_utc", [14, 19])
+        self._normal_hours = sa_cfg.get("normal_hours_utc", [8, 14])
+        self._reduced_size_factor = sa_cfg.get("reduced_size_factor", 0.5)
+        self._weekend_size_factor = sa_cfg.get("weekend_size_factor", 0.5)
 
         # Session state
         self._consecutive_losses: int = 0
@@ -280,6 +289,37 @@ class ScalpSession:
             self._hourly_pnl_pct = 0.0
             self._trades_this_hour = 0
 
+    def get_session_size_factor(self) -> float:
+        """
+        Return position size multiplier based on time of day and day of week.
+
+        Peak hours (14-19 UTC, US market): 1.0
+        Normal hours (8-14 UTC, EU market): 1.0
+        Off-peak hours (other): reduced_size_factor
+        Weekend (Sat/Sun): weekend_size_factor
+        """
+        if not self._session_aware_enabled:
+            return 1.0
+
+        now = time.gmtime()
+        hour = now.tm_hour
+        weekday = now.tm_wday  # 0=Monday, 6=Sunday
+
+        # Weekend check (Saturday=5, Sunday=6)
+        if weekday >= 5:
+            return self._weekend_size_factor
+
+        # Time-of-day check
+        peak_start, peak_end = self._peak_hours[0], self._peak_hours[1]
+        normal_start, normal_end = self._normal_hours[0], self._normal_hours[1]
+
+        if peak_start <= hour < peak_end:
+            return 1.0  # Peak hours — full size
+        elif normal_start <= hour < normal_end:
+            return 1.0  # Normal hours — full size
+        else:
+            return self._reduced_size_factor  # Off-peak — reduced
+
     @property
     def stats(self) -> Dict:
         return {
@@ -332,6 +372,18 @@ class ScalpEngine:
         self._veto_max_cycles = ai_cfg.get("veto_max_stale_cycles", 2)
         self._borderline_quality = ai_cfg.get("borderline_quality_threshold", 0.3)
 
+        # Limit order config
+        limit_cfg = cfg.get("limit_entries", {})
+        self._limit_orders_enabled = limit_cfg.get("enabled", False)
+        self._limit_offset_bps = limit_cfg.get("offset_bps", 1.0)  # Offset from mid-price in basis points
+        self._limit_timeout_sec = limit_cfg.get("timeout_seconds", 5)
+
+        # Partial TP config
+        partial_cfg = cfg.get("partial_tp", {})
+        self._partial_tp_enabled = partial_cfg.get("enabled", False)
+        self._partial_tp_atr_mult = partial_cfg.get("atr_mult", 1.5)  # TP1 at 1.5x ATR
+        self._partial_tp_pct = partial_cfg.get("close_pct", 0.5)  # Close 50% at TP1
+
         # Components
         self._trailing = TrailingStopManager()
         self._session = ScalpSession(symbol)
@@ -357,6 +409,10 @@ class ScalpEngine:
 
         # Fast loop cycle counter (for veto staleness)
         self._fast_cycle: int = 0
+
+        # Partial TP state
+        self._partial_tp_done: bool = False
+        self._entry_atr: float = 0.0
 
         # Lazy-loaded components
         self._analyzer = None
@@ -517,12 +573,22 @@ class ScalpEngine:
             self._close_position(position, f"Time exit ({hold_time_min:.0f}min)")
             return
 
-        # 2. Trailing stop update
+        # 2. Partial TP check (close portion at TP1, let rest run)
+        if self._partial_tp_enabled and not self._partial_tp_done and self._entry_atr > 0:
+            tp1_dist = self._entry_atr * self._partial_tp_atr_mult
+            if pos_type == "BUY" and current_price >= entry_price + tp1_dist:
+                self._partial_close(position, self._partial_tp_pct, f"TP1 at {self._partial_tp_atr_mult}x ATR")
+                self._partial_tp_done = True
+            elif pos_type == "SELL" and current_price <= entry_price - tp1_dist:
+                self._partial_close(position, self._partial_tp_pct, f"TP1 at {self._partial_tp_atr_mult}x ATR")
+                self._partial_tp_done = True
+
+        # 3. Trailing stop update
         new_sl = self._trailing.update(current_price, atr)
         if new_sl is not None:
             self._update_sl_on_exchange(position, new_sl)
 
-        # 3. Trailing stop hit check (client-side)
+        # 4. Trailing stop hit check (client-side)
         trail_hit = False
         if pos_type == "BUY" and current_price <= self._trailing.current_sl:
             trail_hit = True
@@ -535,7 +601,7 @@ class ScalpEngine:
             self._close_position(position, f"Trailing stop ({pnl_pct:.1f}%)")
             return
 
-        # 4. Deterministic exit signal check
+        # 5. Deterministic exit signal check
         exit_signal = self._signal_gen.check_exit(indicators, position)
         if exit_signal.get("should_close"):
             info(f"[SCALP] {self.symbol}: EXIT SIGNAL: {exit_signal['reason']}")
@@ -607,25 +673,54 @@ class ScalpEngine:
         size_pct = base_pct * (0.7 + quality * 0.6)  # 70%-130% of base
         size_pct = max(3.0, min(10.0, size_pct))
 
+        # Session-aware size adjustment
+        session_factor = self._session.get_session_size_factor()
+        if session_factor < 1.0:
+            size_pct *= session_factor
+            size_pct = max(3.0, size_pct)
+
+        # Determine order type (limit or market)
+        entry_type = "MARKET"
+        entry_price = current_price
+        if self._limit_orders_enabled:
+            # Calculate limit price with offset from current price
+            offset = current_price * self._limit_offset_bps / 10000
+            if direction == "BUY":
+                entry_price = current_price - offset  # Slightly below for buy
+            else:
+                entry_price = current_price + offset  # Slightly above for sell
+            entry_type = "LIMIT"
+
         from src.core.executor import create_order
         order_id = create_order(
             self.symbol,
             direction,
-            current_price,
+            entry_price,
             ai_sl=sl,
             ai_tp=tp,
             reason=f"[SCALP] {signal.get('pattern', 'generic')} Q:{quality:.2f} [{signal.get('regime', '?')}]",
             confidence=signal.get("confidence", 0.7),
             size_pct=size_pct,
+            order_type=entry_type,
         )
 
         if order_id:
+            # For limit orders, wait for fill or cancel
+            if entry_type == "LIMIT":
+                filled = self._wait_for_fill(order_id)
+                if not filled:
+                    info(f"[SCALP] {self.symbol}: Limit order not filled in {self._limit_timeout_sec}s, cancelled")
+                    self._trailing.reset()
+                    return
+
             self._session.record_entry()
             self._position_open_time = time.time()
+            self._partial_tp_done = False
+            self._entry_atr = atr
             # Sync position after entry
             time.sleep(1.0)
             self._sync_position()
-            info(f"[SCALP] {self.symbol}: Entry OK: {direction} @ {current_price:.2f} "
+            info(f"[SCALP] {self.symbol}: Entry OK ({entry_type}): {direction} @ {entry_price:.2f} "
                  f"SL={sl:.2f} TP={tp:.2f} size={size_pct:.1f}%")
         else:
             error(f"[SCALP] {self.symbol}: Entry FAILED for {direction}")
@@ -649,6 +744,8 @@ class ScalpEngine:
 
                 self._session.record_exit(pnl_pct)
                 self._trailing.reset()
+                self._partial_tp_done = False
+                self._entry_atr = 0.0
 
                 with self._lock:
                     self._position = None
@@ -661,6 +758,38 @@ class ScalpEngine:
                 error(f"[SCALP] {self.symbol}: Failed to close position {deal_id}")
         except Exception as e:
             error(f"[SCALP] {self.symbol}: Close error: {e}")
+
+    def _wait_for_fill(self, order_id: str) -> bool:
+        """Wait for a limit order to fill, cancel if timeout.
+
+        Returns True if filled, False if cancelled due to timeout.
+        """
+        start = time.time()
+        while time.time() - start < self._limit_timeout_sec:
+            time.sleep(0.5)
+            self._sync_position()
+            with self._lock:
+                if self._position:
+                    return True  # Position appeared → order filled
+
+        # Timeout — cancel the order
+        try:
+            self._client.cancel_all_orders(self.symbol)
+        except Exception as e:
+            warning(f"[SCALP] {self.symbol}: Failed to cancel limit order: {e}")
+        return False
+
+    def _partial_close(self, position: Dict, pct: float, reason: str):
+        """Close a percentage of the current position."""
+        deal_id = position.get("dealId", "")
+        try:
+            result = self._client.close_position(self.symbol, deal_id, percentage=pct)
+            if result:
+                info(f"[SCALP] {self.symbol}: Partial close {pct*100:.0f}% ({reason})")
+            else:
+                warning(f"[SCALP] {self.symbol}: Partial close failed")
+        except Exception as e:
+            warning(f"[SCALP] {self.symbol}: Partial close error: {e}")
 
     def _update_sl_on_exchange(self, position: Dict, new_sl: float):
         """Update stop loss on exchange (throttled)."""

@@ -13,8 +13,11 @@ Indicators:
 - Bollinger Bands(20, 2.0)
 - VWAP — session-based (00:00 UTC reset)
 - Volume ratio — current vs N-bar average
+- Choppiness Index(14) — market choppiness detection
+- CVD — cumulative volume delta approximation
 """
 
+import math
 import time
 from collections import deque
 from typing import Dict, List, Optional, Tuple
@@ -86,6 +89,20 @@ class LightweightAnalyzer:
 
         # MACD crossover tracking
         self._prev_macd_hist: float = 0.0
+
+        # Choppiness Index state (CI = 100 * log10(sum(ATR,n)/(HH-LL)) / log10(n))
+        self._chop_period = 14
+        self._chop_atr_window: deque = deque(maxlen=self._chop_period)
+        self._chop_high_window: deque = deque(maxlen=self._chop_period)
+        self._chop_low_window: deque = deque(maxlen=self._chop_period)
+        self._choppiness: float = 50.0  # 0-100, > 61.8 = choppy
+
+        # CVD (Cumulative Volume Delta) state
+        self._cvd: float = 0.0  # Running CVD
+        self._cvd_ema: float = 0.0  # EMA of CVD for trend
+        self._cvd_ema_period: int = 10
+        self._cvd_prev_ema: float = 0.0  # Previous CVD EMA for trend detection
+        self._cvd_history: deque = deque(maxlen=20)  # Recent delta values for divergence
 
         # State flags
         self._bootstrapped = False
@@ -209,6 +226,40 @@ class LightweightAnalyzer:
             self._vwap_cum_sq_vol += tp * tp * vol
         self._vwap = self._vwap_cum_tp_vol / self._vwap_cum_vol if self._vwap_cum_vol > 0 else closes[-1]
 
+        # Choppiness Index bootstrap (last chop_period candles)
+        chop_start = max(1, len(candles) - self._chop_period)
+        for i in range(chop_start, len(candles)):
+            tr = self._true_range(highs[i], lows[i], closes[i - 1])
+            self._chop_atr_window.append(tr)
+            self._chop_high_window.append(highs[i])
+            self._chop_low_window.append(lows[i])
+        self._update_choppiness()
+
+        # CVD bootstrap (all candles)
+        opens = [float(c.get("openPrice", 0)) for c in candles]
+        self._cvd = 0.0
+        for i in range(len(candles)):
+            delta = self._candle_volume_delta(opens[i], highs[i], lows[i], closes[i], volumes[i])
+            self._cvd += delta
+            self._cvd_history.append(delta)
+        # CVD EMA seed
+        if self._cvd_history:
+            self._cvd_ema = self._cvd
+            k_cvd = 2.0 / (self._cvd_ema_period + 1)
+            # Replay last N deltas to get a proper EMA
+            cvd_run = 0.0
+            history_list = list(self._cvd_history)
+            for d in history_list:
+                cvd_run += d
+            self._cvd_ema = cvd_run
+            # Apply EMA smoothing over recent values
+            if len(history_list) > self._cvd_ema_period:
+                self._cvd_ema = sum(history_list[:self._cvd_ema_period])
+                for d_val in history_list[self._cvd_ema_period:]:
+                    cumulative = self._cvd_ema + d_val
+                    self._cvd_ema = cumulative * k_cvd + self._cvd_ema * (1 - k_cvd)
+            self._cvd_prev_ema = self._cvd_ema
+
         # Volume
         for v in volumes[-self._vol_avg_window:]:
             self._vol_window.append(v)
@@ -252,6 +303,7 @@ class LightweightAnalyzer:
 
         if is_new_candle:
             # New candle closed — full incremental update
+            open_p = float(candle.get("openPrice", 0))
             self._update_emas(close)
             self._update_rsi(close)
             self._update_macd(close)
@@ -259,6 +311,8 @@ class LightweightAnalyzer:
             self._bb_window.append(close)
             self._update_bb()
             self._update_vwap(candle)
+            self._update_chop_data(high, low, self._prev_close)
+            self._update_cvd(open_p, high, low, close, volume)
             self._vol_window.append(volume)
             avg_vol = sum(self._vol_window) / len(self._vol_window) if self._vol_window else 1.0
             self._volume_ratio = volume / avg_vol if avg_vol > 0 else 1.0
@@ -311,6 +365,14 @@ class LightweightAnalyzer:
         else:
             macd_crossover = "NONE"
 
+        # CVD trend: rising/falling/flat
+        if self._cvd_ema > self._cvd_prev_ema * 1.001:
+            cvd_trend = "RISING"
+        elif self._cvd_ema < self._cvd_prev_ema * 0.999:
+            cvd_trend = "FALLING"
+        else:
+            cvd_trend = "FLAT"
+
         return {
             "ema_fast": self._ema_fast,
             "ema_med": self._ema_med,
@@ -334,6 +396,9 @@ class LightweightAnalyzer:
             "volume_ratio": self._volume_ratio,
             "current_price": self._prev_close,
             "momentum_dir": momentum_dir,
+            "choppiness": self._choppiness,
+            "cvd": self._cvd,
+            "cvd_trend": cvd_trend,
             "candle_count": self._candle_count,
             "bootstrapped": self._bootstrapped,
         }
@@ -411,6 +476,68 @@ class LightweightAnalyzer:
         self._vwap_cum_vol += vol
         self._vwap_cum_sq_vol += tp * tp * vol
         self._vwap = self._vwap_cum_tp_vol / self._vwap_cum_vol if self._vwap_cum_vol > 0 else close
+
+    def _update_chop_data(self, high: float, low: float, prev_close: float):
+        """Update choppiness index rolling data and recalculate."""
+        tr = self._true_range(high, low, prev_close)
+        self._chop_atr_window.append(tr)
+        self._chop_high_window.append(high)
+        self._chop_low_window.append(low)
+        self._update_choppiness()
+
+    def _update_choppiness(self):
+        """Calculate Choppiness Index from rolling windows.
+
+        CI = 100 * log10(sum(TR, n) / (HH - LL)) / log10(n)
+        CI > 61.8 → choppy (mean-reverting), CI < 38.2 → trending
+        """
+        n = len(self._chop_atr_window)
+        if n < 2:
+            return
+
+        atr_sum = sum(self._chop_atr_window)
+        hh = max(self._chop_high_window)
+        ll = min(self._chop_low_window)
+        hl_range = hh - ll
+
+        if hl_range <= 0 or atr_sum <= 0:
+            self._choppiness = 50.0
+            return
+
+        ratio = atr_sum / hl_range
+        if ratio <= 0:
+            self._choppiness = 50.0
+            return
+
+        self._choppiness = 100.0 * math.log10(ratio) / math.log10(n)
+        # Clamp to 0-100
+        self._choppiness = max(0.0, min(100.0, self._choppiness))
+
+    def _update_cvd(self, open_p: float, high: float, low: float, close: float, volume: float):
+        """Update CVD with volume delta from candle classification."""
+        delta = self._candle_volume_delta(open_p, high, low, close, volume)
+        self._cvd += delta
+        self._cvd_history.append(delta)
+
+        # Update CVD EMA
+        self._cvd_prev_ema = self._cvd_ema
+        k = 2.0 / (self._cvd_ema_period + 1)
+        self._cvd_ema = self._cvd * k + self._cvd_ema * (1 - k)
+
+    @staticmethod
+    def _candle_volume_delta(open_p: float, high: float, low: float, close: float, volume: float) -> float:
+        """Approximate buy/sell volume from candle data.
+
+        Uses the close position within the candle range to estimate
+        what fraction of volume was buying vs selling.
+        buy_ratio = (close - low) / (high - low)
+        delta = volume * (2 * buy_ratio - 1)
+        """
+        hl_range = high - low
+        if hl_range <= 0 or volume <= 0:
+            return 0.0
+        buy_ratio = (close - low) / hl_range
+        return volume * (2.0 * buy_ratio - 1.0)
 
     @staticmethod
     def _true_range(high: float, low: float, prev_close: float) -> float:

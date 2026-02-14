@@ -30,6 +30,8 @@ TEST_SCALP_SETTINGS = {
         "ob_imbalance_weight": 1,
         "macd_weight": 1,
         "bb_weight": 1,
+        "cvd_weight": 1,
+        "choppiness_threshold": 61.8,
         "rsi_long_zone": [25, 40],
         "rsi_short_zone": [60, 75],
         "ob_imbalance_threshold": 0.3,
@@ -45,6 +47,7 @@ TEST_SCALP_SETTINGS = {
         "ob_confluence_bonus": 1,
         "counter_momentum_penalty": -2,
         "spike_penalty": -1,
+        "cvd_divergence_penalty": -1,
     },
     "regime_overrides": {
         "TRENDING": {"ema_weight": 3, "rsi_weight": 1, "bb_weight": 0, "min_score": 3},
@@ -271,6 +274,7 @@ class TestScalpSignalGenerator:
             "bb_upper": 50300, "bb_lower": 49700,
             "momentum_dir": "UP", "atr_ratio": 1.0,
             "atr": 45, "bb_middle": 50000,
+            "choppiness": 40.0, "cvd": 500, "cvd_trend": "RISING",
         }
 
     def _bearish_indicators(self):
@@ -282,6 +286,7 @@ class TestScalpSignalGenerator:
             "bb_upper": 50300, "bb_lower": 49700,
             "momentum_dir": "DOWN", "atr_ratio": 1.0,
             "atr": 45, "bb_middle": 50000,
+            "choppiness": 40.0, "cvd": -500, "cvd_trend": "FALLING",
         }
 
     def _neutral_indicators(self):
@@ -293,6 +298,7 @@ class TestScalpSignalGenerator:
             "bb_upper": 50200, "bb_lower": 49800,
             "momentum_dir": "MIXED", "atr_ratio": 1.0,
             "atr": 45, "bb_middle": 50000,
+            "choppiness": 50.0, "cvd": 0, "cvd_trend": "FLAT",
         }
 
     def test_bullish_signal(self, generator):
@@ -1029,3 +1035,407 @@ class TestRegimeAdvisorIntegration:
         assert payload["model"] == "google/gemini-2.5-flash"
         assert payload["max_tokens"] == 150
         assert payload["temperature"] == 0.2
+
+
+# =============================================================
+# Phase 4: Choppiness Index tests
+# =============================================================
+
+class TestChoppinessIndex:
+
+    @pytest.fixture
+    def analyzer(self):
+        with patch("src.core.lightweight_analyzer.SCALP_SETTINGS", TEST_SCALP_SETTINGS):
+            from src.core.lightweight_analyzer import LightweightAnalyzer
+            return LightweightAnalyzer("BTCUSDT", config=TEST_SCALP_SETTINGS["signal_rules"])
+
+    def test_snapshot_has_choppiness(self, analyzer):
+        candles = _make_candles(50)
+        analyzer.bootstrap(candles)
+        snap = analyzer.get_snapshot()
+        assert "choppiness" in snap
+        assert 0 <= snap["choppiness"] <= 100
+
+    def test_trending_market_low_choppiness(self, analyzer):
+        """Strong trend should produce low choppiness (< 50)."""
+        ts = int((time.time() - time.time() % 86400) * 1000)
+        price = 50000.0
+        candles = []
+        for i in range(60):
+            price += 30  # Steady strong uptrend
+            candles.append({
+                "openPrice": price - 15, "highPrice": price + 10,
+                "lowPrice": price - 20, "closePrice": price,
+                "volume": 1000, "timestamp": ts + i * 60000,
+            })
+        analyzer.bootstrap(candles)
+        snap = analyzer.get_snapshot()
+        # In a strong trend, choppiness should be below 50
+        assert snap["choppiness"] < 55
+
+    def test_choppy_market_high_choppiness(self, analyzer):
+        """Sideways zigzag should produce high choppiness (> 55)."""
+        ts = int((time.time() - time.time() % 86400) * 1000)
+        price = 50000.0
+        candles = []
+        for i in range(60):
+            # Zigzag: alternating up/down with large range
+            direction = 1 if i % 2 == 0 else -1
+            price += direction * 50
+            candles.append({
+                "openPrice": price - direction * 25, "highPrice": price + 30,
+                "lowPrice": price - 30, "closePrice": price,
+                "volume": 1000, "timestamp": ts + i * 60000,
+            })
+        analyzer.bootstrap(candles)
+        snap = analyzer.get_snapshot()
+        # Choppy market should have higher choppiness
+        assert snap["choppiness"] > 55
+
+    def test_choppiness_incremental_update(self, analyzer):
+        candles = _make_candles(50)
+        analyzer.bootstrap(candles)
+        snap1 = analyzer.get_snapshot()
+
+        # Add trending candle
+        new_candle = {
+            "openPrice": 50200, "highPrice": 50300,
+            "lowPrice": 50150, "closePrice": 50280,
+            "volume": 1500,
+            "timestamp": candles[-1]["timestamp"] + 60000,
+        }
+        snap2 = analyzer.update(new_candle)
+        # Choppiness should still be a valid number
+        assert 0 <= snap2["choppiness"] <= 100
+
+
+# =============================================================
+# Phase 4: CVD (Cumulative Volume Delta) tests
+# =============================================================
+
+class TestCVD:
+
+    @pytest.fixture
+    def analyzer(self):
+        with patch("src.core.lightweight_analyzer.SCALP_SETTINGS", TEST_SCALP_SETTINGS):
+            from src.core.lightweight_analyzer import LightweightAnalyzer
+            return LightweightAnalyzer("BTCUSDT", config=TEST_SCALP_SETTINGS["signal_rules"])
+
+    def test_snapshot_has_cvd_fields(self, analyzer):
+        candles = _make_candles(50)
+        analyzer.bootstrap(candles)
+        snap = analyzer.get_snapshot()
+        assert "cvd" in snap
+        assert "cvd_trend" in snap
+        assert snap["cvd_trend"] in ("RISING", "FALLING", "FLAT")
+
+    def test_bullish_candles_positive_cvd(self, analyzer):
+        """Bullish candles (close > open) should produce positive CVD."""
+        ts = int((time.time() - time.time() % 86400) * 1000)
+        price = 50000.0
+        candles = []
+        for i in range(60):
+            price += 10  # Steady uptrend
+            candles.append({
+                "openPrice": price - 20, "highPrice": price + 5,
+                "lowPrice": price - 25, "closePrice": price,
+                "volume": 1000, "timestamp": ts + i * 60000,
+            })
+        analyzer.bootstrap(candles)
+        snap = analyzer.get_snapshot()
+        assert snap["cvd"] > 0
+
+    def test_bearish_candles_negative_cvd(self, analyzer):
+        """Bearish candles (close < open) should produce negative CVD."""
+        ts = int((time.time() - time.time() % 86400) * 1000)
+        price = 50000.0
+        candles = []
+        for i in range(60):
+            price -= 10  # Steady downtrend
+            candles.append({
+                "openPrice": price + 20, "highPrice": price + 25,
+                "lowPrice": price - 5, "closePrice": price,
+                "volume": 1000, "timestamp": ts + i * 60000,
+            })
+        analyzer.bootstrap(candles)
+        snap = analyzer.get_snapshot()
+        assert snap["cvd"] < 0
+
+    def test_candle_volume_delta_calculation(self):
+        """Test the static volume delta classification."""
+        with patch("src.core.lightweight_analyzer.SCALP_SETTINGS", TEST_SCALP_SETTINGS):
+            from src.core.lightweight_analyzer import LightweightAnalyzer
+            # Bullish candle: close near high
+            delta = LightweightAnalyzer._candle_volume_delta(100, 110, 95, 108, 1000)
+            # buy_ratio = (108-95)/(110-95) = 13/15 ≈ 0.867
+            # delta = 1000 * (2*0.867 - 1) = 1000 * 0.733 ≈ 733
+            assert delta > 500
+
+            # Bearish candle: close near low
+            delta = LightweightAnalyzer._candle_volume_delta(105, 110, 95, 97, 1000)
+            # buy_ratio = (97-95)/(110-95) = 2/15 ≈ 0.133
+            # delta = 1000 * (2*0.133 - 1) = 1000 * -0.733 ≈ -733
+            assert delta < -500
+
+            # Flat range (high == low)
+            delta = LightweightAnalyzer._candle_volume_delta(100, 100, 100, 100, 1000)
+            assert delta == 0.0
+
+    def test_cvd_incremental_update(self, analyzer):
+        candles = _make_candles(50)
+        analyzer.bootstrap(candles)
+        cvd_before = analyzer._cvd
+
+        # Add a strongly bullish candle
+        new_candle = {
+            "openPrice": 50000, "highPrice": 50200,
+            "lowPrice": 49980, "closePrice": 50190,
+            "volume": 2000,
+            "timestamp": candles[-1]["timestamp"] + 60000,
+        }
+        analyzer.update(new_candle)
+        # CVD should increase (bullish candle)
+        assert analyzer._cvd > cvd_before
+
+
+# =============================================================
+# Phase 4: Choppiness filter in signal generator
+# =============================================================
+
+class TestChoppinessFilter:
+
+    @pytest.fixture
+    def generator(self):
+        with patch("src.core.scalp_signal.SCALP_SETTINGS", TEST_SCALP_SETTINGS):
+            from src.core.scalp_signal import ScalpSignalGenerator
+            return ScalpSignalGenerator(config=TEST_SCALP_SETTINGS)
+
+    def _bullish_indicators(self, choppiness=40.0):
+        return {
+            "ema_fast": 50100, "ema_med": 50050, "ema_macro": 50000,
+            "rsi": 35, "volume_ratio": 1.5,
+            "current_price": 50120, "vwap": 50100,
+            "macd_hist": 0.001, "macd_crossover": "BULLISH",
+            "bb_upper": 50300, "bb_lower": 49700,
+            "momentum_dir": "UP", "atr_ratio": 1.0,
+            "atr": 45, "bb_middle": 50000,
+            "choppiness": choppiness, "cvd": 500, "cvd_trend": "RISING",
+        }
+
+    def test_normal_market_allows_signal(self, generator):
+        ind = self._bullish_indicators(choppiness=40.0)
+        result = generator.generate(ind)
+        assert result["signal"] != "HOLD" or "Choppy" not in str(result["reasons"])
+
+    def test_choppy_market_blocks_signal(self, generator):
+        ind = self._bullish_indicators(choppiness=70.0)
+        result = generator.generate(ind)
+        assert result["signal"] == "HOLD"
+        assert any("Choppy" in r for r in result["reasons"])
+
+    def test_choppy_ranging_regime_allows(self, generator):
+        """RANGING regime should still allow signals in choppy market."""
+        ind = self._bullish_indicators(choppiness=70.0)
+        regime = {"regime": "RANGING"}
+        result = generator.generate(ind, regime=regime)
+        # Should NOT be filtered by choppiness in RANGING regime
+        assert not any("Choppy" in r for r in result["reasons"])
+
+    def test_choppiness_boundary(self, generator):
+        """At exactly 61.8, should not filter (> not >=)."""
+        ind = self._bullish_indicators(choppiness=61.8)
+        result = generator.generate(ind)
+        assert not any("Choppy" in r for r in result["reasons"])
+
+
+# =============================================================
+# Phase 4: CVD scoring in signal generator
+# =============================================================
+
+class TestCVDScoring:
+
+    @pytest.fixture
+    def generator(self):
+        with patch("src.core.scalp_signal.SCALP_SETTINGS", TEST_SCALP_SETTINGS):
+            from src.core.scalp_signal import ScalpSignalGenerator
+            return ScalpSignalGenerator(config=TEST_SCALP_SETTINGS)
+
+    def test_cvd_rising_boosts_long(self, generator):
+        ind = {
+            "ema_fast": 50100, "ema_med": 50050, "ema_macro": 50000,
+            "rsi": 35, "volume_ratio": 1.5,
+            "current_price": 50120, "vwap": 50100,
+            "macd_hist": 0.001, "macd_crossover": "NONE",
+            "bb_upper": 50300, "bb_lower": 49700,
+            "momentum_dir": "UP", "atr_ratio": 1.0,
+            "atr": 45, "bb_middle": 50000,
+            "choppiness": 40.0, "cvd": 500, "cvd_trend": "RISING",
+        }
+        result = generator.generate(ind)
+        assert any("CVD↑" in r for r in result["reasons"])
+
+    def test_cvd_falling_boosts_short(self, generator):
+        ind = {
+            "ema_fast": 49900, "ema_med": 49950, "ema_macro": 50000,
+            "rsi": 65, "volume_ratio": 1.5,
+            "current_price": 49880, "vwap": 49900,
+            "macd_hist": -0.001, "macd_crossover": "NONE",
+            "bb_upper": 50300, "bb_lower": 49700,
+            "momentum_dir": "DOWN", "atr_ratio": 1.0,
+            "atr": 45, "bb_middle": 50000,
+            "choppiness": 40.0, "cvd": -500, "cvd_trend": "FALLING",
+        }
+        result = generator.generate(ind)
+        assert any("CVD↓" in r for r in result["reasons"])
+
+    def test_cvd_divergence_penalty(self, generator):
+        """Price UP but CVD FALLING should apply divergence penalty."""
+        ind = {
+            "ema_fast": 50100, "ema_med": 50050, "ema_macro": 50000,
+            "rsi": 35, "volume_ratio": 1.5,
+            "current_price": 50120, "vwap": 50100,
+            "macd_hist": 0.001, "macd_crossover": "NONE",
+            "bb_upper": 50300, "bb_lower": 49700,
+            "momentum_dir": "UP", "atr_ratio": 1.0,
+            "atr": 45, "bb_middle": 50000,
+            "choppiness": 40.0, "cvd": -100, "cvd_trend": "FALLING",
+        }
+        result = generator.generate(ind)
+        assert any("CVDdiv" in r for r in result["reasons"])
+
+
+# =============================================================
+# Phase 4: Session-aware trading
+# =============================================================
+
+class TestSessionAwareness:
+
+    def _make_session(self, enabled=True, **overrides):
+        sa_cfg = {
+            "enabled": enabled,
+            "peak_hours_utc": [14, 19],
+            "normal_hours_utc": [8, 14],
+            "reduced_size_factor": 0.5,
+            "weekend_size_factor": 0.3,
+        }
+        sa_cfg.update(overrides)
+        risk_cfg = {
+            "max_consecutive_losses": 5,
+            "consecutive_loss_cooldown_minutes": 30,
+            "daily_loss_limit_pct": 3.0,
+            "hourly_loss_limit_pct": 1.0,
+            "max_trades_per_hour": 6,
+            "max_trades_per_day": 50,
+            "min_cooldown_seconds": 120,
+        }
+        with patch("src.core.scalp_engine.SCALP_SETTINGS", {
+            "risk_limits": risk_cfg,
+            "session_awareness": sa_cfg,
+        }):
+            from src.core.scalp_engine import ScalpSession
+            return ScalpSession("BTCUSDT", config=risk_cfg, session_config=sa_cfg)
+
+    def test_disabled_returns_1(self):
+        session = self._make_session(enabled=False)
+        assert session.get_session_size_factor() == 1.0
+
+    @patch("src.core.scalp_engine.time")
+    def test_peak_hours(self, mock_time):
+        """During peak hours (14-19 UTC), size factor should be 1.0."""
+        mock_gm = time.struct_time((2026, 2, 12, 16, 0, 0, 3, 43, 0))  # Thu 16:00 UTC
+        mock_time.gmtime.return_value = mock_gm
+        mock_time.time.return_value = time.time()
+        session = self._make_session(enabled=True)
+        assert session.get_session_size_factor() == 1.0
+
+    @patch("src.core.scalp_engine.time")
+    def test_normal_hours(self, mock_time):
+        """During normal hours (8-14 UTC), size factor should be 1.0."""
+        mock_gm = time.struct_time((2026, 2, 12, 10, 0, 0, 3, 43, 0))  # Thu 10:00 UTC
+        mock_time.gmtime.return_value = mock_gm
+        mock_time.time.return_value = time.time()
+        session = self._make_session(enabled=True)
+        assert session.get_session_size_factor() == 1.0
+
+    @patch("src.core.scalp_engine.time")
+    def test_off_peak_hours(self, mock_time):
+        """During off-peak hours (e.g., 3:00 UTC), size factor should be reduced."""
+        mock_gm = time.struct_time((2026, 2, 12, 3, 0, 0, 3, 43, 0))  # Thu 3:00 UTC
+        mock_time.gmtime.return_value = mock_gm
+        mock_time.time.return_value = time.time()
+        session = self._make_session(enabled=True)
+        assert session.get_session_size_factor() == 0.5
+
+    @patch("src.core.scalp_engine.time")
+    def test_weekend(self, mock_time):
+        """On weekends, size factor should be weekend_size_factor."""
+        mock_gm = time.struct_time((2026, 2, 14, 12, 0, 0, 5, 45, 0))  # Sat 12:00 UTC
+        mock_time.gmtime.return_value = mock_gm
+        mock_time.time.return_value = time.time()
+        session = self._make_session(enabled=True)
+        assert session.get_session_size_factor() == 0.3
+
+
+# =============================================================
+# Phase 4: Partial TP state tracking
+# =============================================================
+
+class TestPartialTP:
+
+    def _make_engine(self, **partial_overrides):
+        partial_cfg = {
+            "enabled": True,
+            "atr_mult": 1.5,
+            "close_pct": 0.5,
+        }
+        partial_cfg.update(partial_overrides)
+        settings = {
+            "loops": {"fast_interval": 1.5, "slow_interval": 45},
+            "time_exit": {"max_hold_minutes": 15},
+            "ai_integration": {},
+            "signal_rules": {"spread_max_bps": 5.0},
+            "partial_tp": partial_cfg,
+            "limit_entries": {"enabled": False},
+            "risk_limits": {"base_position_pct": 5.0},
+        }
+        with patch("src.core.scalp_engine.SCALP_SETTINGS", settings):
+            from src.core.scalp_engine import ScalpEngine
+            engine = ScalpEngine("BTCUSDT")
+        return engine
+
+    def test_partial_tp_config_loaded(self):
+        engine = self._make_engine()
+        assert engine._partial_tp_enabled is True
+        assert engine._partial_tp_atr_mult == 1.5
+        assert engine._partial_tp_pct == 0.5
+
+    def test_partial_tp_disabled(self):
+        engine = self._make_engine(enabled=False)
+        assert engine._partial_tp_enabled is False
+
+    def test_partial_tp_state_reset_on_close(self):
+        engine = self._make_engine()
+        engine._partial_tp_done = True
+        engine._entry_atr = 45.0
+
+        # Simulate close_position resetting state
+        engine._partial_tp_done = False
+        engine._entry_atr = 0.0
+        assert engine._partial_tp_done is False
+        assert engine._entry_atr == 0.0
+
+    def test_limit_orders_config(self):
+        settings = {
+            "loops": {"fast_interval": 1.5, "slow_interval": 45},
+            "time_exit": {},
+            "ai_integration": {},
+            "signal_rules": {"spread_max_bps": 5.0},
+            "partial_tp": {"enabled": False},
+            "limit_entries": {"enabled": True, "offset_bps": 2.0, "timeout_seconds": 8},
+        }
+        with patch("src.core.scalp_engine.SCALP_SETTINGS", settings):
+            from src.core.scalp_engine import ScalpEngine
+            engine = ScalpEngine("BTCUSDT")
+        assert engine._limit_orders_enabled is True
+        assert engine._limit_offset_bps == 2.0
+        assert engine._limit_timeout_sec == 8

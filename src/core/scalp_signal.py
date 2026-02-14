@@ -66,8 +66,9 @@ class ScalpSignalGenerator:
         ob_w = weights.get("ob_imbalance_weight", 1)
         macd_w = weights.get("macd_weight", 1)
         bb_w = weights.get("bb_weight", 1)
+        cvd_w = weights.get("cvd_weight", 1)
 
-        max_score = ema_w + momentum_w + rsi_w + vwap_w + volume_w + ob_w + macd_w + bb_w
+        max_score = ema_w + momentum_w + rsi_w + vwap_w + volume_w + ob_w + macd_w + bb_w + cvd_w
         min_score = weights.get("min_score", self.rules.get("min_score_for_signal", 4))
         tier1_required = self.rules.get("tier1_required", True)
         conflict_friction = self.rules.get("conflict_friction_threshold", 2)
@@ -76,6 +77,30 @@ class ScalpSignalGenerator:
         rsi_long_zone = self.rules.get("rsi_long_zone", [25, 40])
         rsi_short_zone = self.rules.get("rsi_short_zone", [60, 75])
         ob_threshold = self.rules.get("ob_imbalance_threshold", 0.3)
+        chop_threshold = self.rules.get("choppiness_threshold", 61.8)
+
+        # === CHOPPINESS FILTER ===
+        choppiness = indicators.get("choppiness", 50.0)
+        is_choppy = choppiness > chop_threshold
+        if is_choppy:
+            # In choppy market, only allow RANGING regime or hold
+            regime_label_chk = regime.get("regime", "") if regime else ""
+            if regime_label_chk != "RANGING":
+                return {
+                    "signal": "HOLD",
+                    "score": 0,
+                    "max_score": max_score,
+                    "quality": 0.0,
+                    "confidence": 0.0,
+                    "pattern": "none",
+                    "reasons": [f"Choppy ({choppiness:.1f} > {chop_threshold})"],
+                    "details": {
+                        "long_score": 0, "short_score": 0,
+                        "min_score_required": min_score,
+                        "conflicting": False,
+                    },
+                    "regime": regime.get("regime", "?") if regime else "?",
+                }
 
         # === SCORING ===
         long_score = 0
@@ -174,6 +199,15 @@ class ScalpSignalGenerator:
             short_score += bb_w
             short_reasons.append(f"BB↑ +{bb_w}")
 
+        # 3e. CVD (Cumulative Volume Delta)
+        cvd_trend = indicators.get("cvd_trend", "FLAT")
+        if cvd_trend == "RISING":
+            long_score += cvd_w
+            long_reasons.append(f"CVD↑ +{cvd_w}")
+        elif cvd_trend == "FALLING":
+            short_score += cvd_w
+            short_reasons.append(f"CVD↓ +{cvd_w}")
+
         # === INTERACTION BONUSES ===
         long_int = 0
         short_int = 0
@@ -217,6 +251,15 @@ class ScalpSignalGenerator:
         if ema_short and rsi < 30:
             short_int += counter_pen
             short_reasons.append(f"CounterMom {counter_pen}")
+
+        # CVD divergence penalty: price direction vs CVD direction
+        cvd_div_pen = self.interactions.get("cvd_divergence_penalty", -1)
+        if momentum_dir == "UP" and cvd_trend == "FALLING":
+            long_int += cvd_div_pen
+            long_reasons.append(f"CVDdiv {cvd_div_pen}")
+        elif momentum_dir == "DOWN" and cvd_trend == "RISING":
+            short_int += cvd_div_pen
+            short_reasons.append(f"CVDdiv {cvd_div_pen}")
 
         # ATR spike penalty
         spike_pen = self.interactions.get("spike_penalty", -1)
@@ -381,6 +424,7 @@ class ScalpSignalGenerator:
             "ob_imbalance_weight": self.rules.get("ob_imbalance_weight", 1),
             "macd_weight": self.rules.get("macd_weight", 1),
             "bb_weight": self.rules.get("bb_weight", 1),
+            "cvd_weight": self.rules.get("cvd_weight", 1),
             "min_score": self.rules.get("min_score_for_signal", 4),
         }
 

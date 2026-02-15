@@ -275,26 +275,45 @@ class MarketRegimeDetector:
                 if consistency_category == "DIRECTIONAL":
                     return "TRENDING", 0.85
 
+        # Правило 2b: Умеренный тренд + норм. волатильность + смешанный -> TRENDING (lower confidence)
+        if trend_category == "MODERATE_TREND" and volatility_state == "NORMAL":
+            if consistency_category == "MIXED":
+                return "TRENDING", 0.65
+
+        # Правило 2c: Слабый тренд + направленность + норм. волатильность -> TRENDING (emerging trend)
+        if trend_category == "WEAK_TREND" and consistency_category == "DIRECTIONAL":
+            if volatility_state == "NORMAL":
+                return "TRENDING", 0.6
+
         # Правило 3: Слабый/нет тренда + сжатие/норм. волатильность + чоп/смешанный -> RANGING
         if trend_category in ["WEAK_TREND", "NO_TREND"]:
             if volatility_state in ["COMPRESSED", "NORMAL"]:
                 if consistency_category in ["CHOPPY", "MIXED"]:
                     return "RANGING", 0.8
 
+        # Правило 3b: Нет тренда + норм. волатильность + направленность -> RANGING (short-lived move in range)
+        if trend_category == "NO_TREND" and volatility_state == "NORMAL":
+            if consistency_category == "DIRECTIONAL":
+                return "RANGING", 0.6
+
         # Правило 4: Высокая волатильность без сильного тренда -> VOLATILE
         if volatility_state == "EXPANDED" and trend_category in ["NO_TREND", "WEAK_TREND"]:
             return "VOLATILE", 0.75
 
-        # Правило 5: Сильный тренд но чопи консистенси -> TRANSITIONAL (возможный разворот)
+        # Правило 5: Сильный тренд но чопи консистенси -> RANGING (trend exhaustion, trade reversals)
         if trend_category in ["STRONG_TREND", "MODERATE_TREND"] and consistency_category == "CHOPPY":
-            return "TRANSITIONAL", 0.7
+            return "RANGING", 0.6
 
-        # Правило 6: Сжатие с направленностью -> TRANSITIONAL (возможный пробой)
+        # Правило 6: Сжатие с направленностью -> TRENDING (pre-breakout)
         if volatility_state == "COMPRESSED" and consistency_category == "DIRECTIONAL":
-            return "TRANSITIONAL", 0.65
+            return "TRENDING", 0.55
 
-        # Все остальные случаи -> TRANSITIONAL с низкой уверенностью
-        return "TRANSITIONAL", 0.5
+        # Правило 7: Сильный тренд + сжатие + смешанный -> TRENDING (consolidation in trend)
+        if trend_category in ["STRONG_TREND", "MODERATE_TREND"] and volatility_state == "COMPRESSED":
+            return "TRENDING", 0.55
+
+        # Все остальные случаи -> RANGING (safer default than TRANSITIONAL)
+        return "RANGING", 0.5
 
 
 # Глобальный экземпляр детектора (ленивая инициализация)

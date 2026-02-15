@@ -297,34 +297,36 @@ class TestClassifyRegime:
         assert regime == "VOLATILE"
         assert confidence == 0.75
 
-    def test_transitional_strong_trend_choppy(self, detector):
+    def test_strong_trend_choppy_is_ranging(self, detector):
+        # Strong trend + choppy = trend exhaustion, treat as ranging
         regime, confidence = detector._classify_regime(
             "STRONG_TREND", "COMPRESSED", "CHOPPY", 1.0
         )
-        assert regime == "TRANSITIONAL"
-        assert confidence == 0.7
+        assert regime == "RANGING"
+        assert confidence == 0.6
 
-    def test_transitional_moderate_trend_choppy(self, detector):
+    def test_moderate_trend_choppy_is_ranging(self, detector):
         regime, confidence = detector._classify_regime(
             "MODERATE_TREND", "COMPRESSED", "CHOPPY", 1.0
         )
-        assert regime == "TRANSITIONAL"
-        assert confidence == 0.7
+        assert regime == "RANGING"
+        assert confidence == 0.6
 
-    def test_transitional_compressed_directional(self, detector):
+    def test_compressed_directional_is_trending(self, detector):
+        # Compressed + directional = pre-breakout, treat as trending
         regime, confidence = detector._classify_regime(
             "NO_TREND", "COMPRESSED", "DIRECTIONAL", 1.0
         )
-        assert regime == "TRANSITIONAL"
-        assert confidence == 0.65
+        assert regime == "TRENDING"
+        assert confidence == 0.55
 
-    def test_transitional_fallback(self, detector):
-        # None of the specific rules match
+    def test_moderate_trend_normal_mixed_is_trending(self, detector):
+        # Moderate trend + normal vol + mixed = still tradeable as trending
         regime, confidence = detector._classify_regime(
             "MODERATE_TREND", "NORMAL", "MIXED", 1.0
         )
-        assert regime == "TRANSITIONAL"
-        assert confidence == 0.5
+        assert regime == "TRENDING"
+        assert confidence == 0.65
 
     def test_atr_extreme_overrides_everything(self, detector):
         # Even with strong trend + directional, extreme ATR -> VOLATILE

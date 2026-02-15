@@ -59,16 +59,21 @@ def calculate_dynamic_sl_tp(
         atr_sl = current_price - (atr * sl_mult * quality_sl_adj)
         atr_tp = current_price + (atr * tp_mult * quality_tp_adj)
 
-        # Валидация SL по уровню поддержки
-        if support > 0 and support > atr_sl:
+        # Валидация SL по уровню поддержки (только если поддержка НИЖЕ текущей цены)
+        if support > 0 and support < current_price and support > atr_sl:
             # Поддержка выше базового SL → устанавливаем SL с буфером ниже поддержки
             sl = support - (atr * 0.3)
             info(f"   SL скорректирован по поддержке: {atr_sl:.4f} → {sl:.4f} (support={support:.4f})")
         else:
             sl = atr_sl
 
-        # Валидация TP по уровню сопротивления
-        if resistance > 0 and resistance < atr_tp:
+        # Sanity check: SL must be below current price for BUY
+        if sl >= current_price:
+            sl = current_price - (atr * sl_mult)
+            info(f"   SL sanity fallback (BUY): SL was >= price, reset to {sl:.4f}")
+
+        # Валидация TP по уровню сопротивления (только если сопротивление ВЫШЕ текущей цены)
+        if resistance > 0 and resistance > current_price and resistance < atr_tp:
             # Сопротивление ниже базового TP → устанавливаем TP с буфером до сопротивления
             tp = resistance - (atr * 0.1)
             info(f"   TP скорректирован по сопротивлению: {atr_tp:.4f} → {tp:.4f} (resistance={resistance:.4f})")
@@ -85,16 +90,21 @@ def calculate_dynamic_sl_tp(
         atr_sl = current_price + (atr * sl_mult * quality_sl_adj)
         atr_tp = current_price - (atr * tp_mult * quality_tp_adj)
 
-        # Валидация SL по уровню сопротивления
-        if resistance > 0 and resistance < atr_sl:
+        # Валидация SL по уровню сопротивления (только если сопротивление ВЫШЕ текущей цены)
+        if resistance > 0 and resistance > current_price and resistance < atr_sl:
             # Сопротивление ниже базового SL → устанавливаем SL с буфером выше сопротивления
             sl = resistance + (atr * 0.3)
             info(f"   SL скорректирован по сопротивлению: {atr_sl:.4f} → {sl:.4f} (resistance={resistance:.4f})")
         else:
             sl = atr_sl
 
-        # Валидация TP по уровню поддержки
-        if support > 0 and support > atr_tp:
+        # Sanity check: SL must be above current price for SELL
+        if sl <= current_price:
+            sl = current_price + (atr * sl_mult)
+            info(f"   SL sanity fallback (SELL): SL was <= price, reset to {sl:.4f}")
+
+        # Валидация TP по уровню поддержки (только если поддержка НИЖЕ текущей цены)
+        if support > 0 and support < current_price and support > atr_tp:
             # Поддержка выше базового TP → устанавливаем TP с буфером до поддержки
             tp = support + (atr * 0.1)
             info(f"   TP скорректирован по поддержке: {atr_tp:.4f} → {tp:.4f} (support={support:.4f})")

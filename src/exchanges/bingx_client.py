@@ -614,46 +614,33 @@ class BingXClient(ExchangeClient):
         :param tp: Цена Take Profit (опционально)
         :param sl: Цена Stop Loss (опционально)
         :param quantity: Размер позиции (опционально, если не указан - берется из API)
+        :return: True если все запрошенные SL/TP успешно поставлены
         """
+        formatted_symbol = self._format_symbol(symbol)
+
         # 1. Cancel existing open orders (SL/TP are open orders)
         open_orders = self.get_open_orders(symbol)
         for order in open_orders:
-            # Cancel only SL/TP orders? Or all?
-            # Safer to cancel all open orders for this symbol to avoid duplicates
-            # But be careful if there are other limit orders.
-            # Usually bots like this only have SL/TP as open orders.
             self.cancel_order(symbol, order["orderId"])
 
         # 2. Place new SL/TP
-        # For LONG position: SL/TP are SELL orders with positionSide=LONG
-        # For SHORT position: SL/TP are BUY orders with positionSide=SHORT
-
         side = "SELL" if position_side.upper() == "LONG" else "BUY"
+
+        # Fetch position size once if not provided
+        size = quantity
+        if not size:
+            positions = self.get_positions()
+            norm_symbol = symbol.replace("-", "")
+            if norm_symbol in positions and positions[norm_symbol]:
+                size = positions[norm_symbol][0]["size"]
+
+        all_ok = True
 
         if tp:
             info(f"🔄 Setting TP for {symbol} ({position_side}) at {tp}")
-            # TP is TAKE_PROFIT_MARKET
-            # Quantity is not strictly required for SL/TP in some modes if it closes position,
-            # but usually required. We might need to know position size.
-            # BingX often allows 0 or omitting quantity for "close all" or "entire position" logic in some endpoints,
-            # but standard trade/order endpoint usually needs quantity.
-            # However, for SL/TP specifically, there might be a different way.
-            # Let's check if we can use the 'takeProfit' param on a new order? No, we are updating.
-
-            # If we don't know quantity, we might fail.
-            # But wait, we can fetch position size.
-            size = quantity
-            if not size:
-                positions = self.get_positions()
-                # Normalize symbol
-                norm_symbol = symbol.replace("-", "")
-                if norm_symbol in positions and positions[norm_symbol]:
-                    # Assuming one position per symbol
-                    size = positions[norm_symbol][0]["size"]
-
             if size:
                 params = {
-                    "symbol": symbol.replace("/", "-").replace("USDT", "-USDT") if "-" not in symbol else symbol,
+                    "symbol": formatted_symbol,
                     "side": side,
                     "positionSide": position_side,
                     "type": "TAKE_PROFIT_MARKET",
@@ -661,25 +648,22 @@ class BingXClient(ExchangeClient):
                     "workingType": "MARK_PRICE",
                     "quantity": size
                 }
-                # Use make_request directly as place_order wrapper might be too simple
                 endpoint = "/openApi/swap/v2/trade/order"
-                self.make_request("post", endpoint, params)
+                response = self.make_request("post", endpoint, params)
+                if response and response.get("code") == 0:
+                    info(f"✅ TP order placed for {symbol} at {tp}")
+                else:
+                    error(f"❌ TP order FAILED for {symbol}: {response}")
+                    all_ok = False
             else:
                 error(f"❌ Cannot set TP: Position size unknown for {symbol}")
+                all_ok = False
 
         if sl:
             info(f"🔄 Setting SL for {symbol} ({position_side}) at {sl}")
-            # Fetch size again if needed (optimized in real code)
-            size = quantity
-            if not size:
-                positions = self.get_positions()
-                norm_symbol = symbol.replace("-", "")
-                if norm_symbol in positions and positions[norm_symbol]:
-                    size = positions[norm_symbol][0]["size"]
-
             if size:
                 params = {
-                    "symbol": symbol.replace("/", "-").replace("USDT", "-USDT") if "-" not in symbol else symbol,
+                    "symbol": formatted_symbol,
                     "side": side,
                     "positionSide": position_side,
                     "type": "STOP_MARKET",
@@ -688,9 +672,17 @@ class BingXClient(ExchangeClient):
                     "quantity": size
                 }
                 endpoint = "/openApi/swap/v2/trade/order"
-                self.make_request("post", endpoint, params)
+                response = self.make_request("post", endpoint, params)
+                if response and response.get("code") == 0:
+                    info(f"✅ SL order placed for {symbol} at {sl}")
+                else:
+                    error(f"❌ SL order FAILED for {symbol}: {response}")
+                    all_ok = False
             else:
                 error(f"❌ Cannot set SL: Position size unknown for {symbol}")
+                all_ok = False
+
+        return all_ok
 
     def _format_symbol(self, symbol: str) -> str:
         """Централизованное форматирование символа для BingX API."""

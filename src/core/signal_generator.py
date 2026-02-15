@@ -209,8 +209,16 @@ class SignalGenerator:
             short_reasons.append(f"BB↑ +{bb_weight}")
             bb_short = True
 
-        # 3c. Volume (added to winner only if >= 0.8x)
+        # 3c. Volume (+1, counted toward threshold if >= 0.8x)
         volume_confirmed = volume_ratio >= 0.8
+        if volume_confirmed:
+            # Add volume to both sides proportionally (winner gets it in final score)
+            if momentum_long or ema_long:
+                long_score += volume_weight
+                long_reasons.append(f"Vol {volume_ratio:.1f}x +{volume_weight}")
+            if momentum_short or ema_short:
+                short_score += volume_weight
+                short_reasons.append(f"Vol {volume_ratio:.1f}x +{volume_weight}")
 
         # --- TIER 2 (Optional): Trend Alignment ---
         if self.rules.get("trend_alignment_required", False):
@@ -300,9 +308,6 @@ class SignalGenerator:
                 signal = "BUY"
                 score = long_score
                 reasons = long_reasons
-                if volume_confirmed:
-                    score += volume_weight
-                    reasons.append(f"Vol {volume_ratio:.1f}x +{volume_weight}")
         elif short_score >= min_score and short_score > long_score:
             if tier1_required and not short_tier1:
                 signal = "HOLD"
@@ -312,9 +317,6 @@ class SignalGenerator:
                 signal = "SELL"
                 score = short_score
                 reasons = short_reasons
-                if volume_confirmed:
-                    score += volume_weight
-                    reasons.append(f"Vol {volume_ratio:.1f}x +{volume_weight}")
         elif long_score >= min_score and short_score >= min_score:
             signal = "HOLD"
             score = max(long_score, short_score)
@@ -325,8 +327,10 @@ class SignalGenerator:
             reasons = [f"Low score L:{long_score} S:{short_score} (need {min_score})"]
 
         # === QUALITY SCORE ===
+        # Base quality 0.1 at min_score, scales to 1.0 at max_score
         if signal != "HOLD" and max_score > min_score:
-            quality = max(0.0, min(1.0, (score - min_score) / (max_score - min_score)))
+            raw_quality = (score - min_score) / (max_score - min_score)
+            quality = max(0.1, min(1.0, 0.1 + raw_quality * 0.9))
         else:
             quality = 0.0
 

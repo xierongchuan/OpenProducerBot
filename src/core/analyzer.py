@@ -480,8 +480,10 @@ def analyze_symbol(symbol, position=None, decision_context=""):
 
     # === УРОВНИ ПОДДЕРЖКИ/СОПРОТИВЛЕНИЯ ===
     sr_levels = calculate_support_resistance(close_prices)
-    support = sr_levels['supports'][-1] if sr_levels['supports'] else current_price * 0.99
-    resistance = sr_levels['resistances'][0] if sr_levels['resistances'] else current_price * 1.01
+    valid_supports = [s for s in sr_levels['supports'] if s < current_price]
+    valid_resistances = [r for r in sr_levels['resistances'] if r > current_price]
+    support = valid_supports[-1] if valid_supports else current_price * 0.99
+    resistance = valid_resistances[0] if valid_resistances else current_price * 1.01
 
     # Pivot Point (классический)
     if len(prices) >= 2:

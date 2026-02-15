@@ -157,8 +157,25 @@ def create_order(symbol, direction, price, ai_sl=None, ai_tp=None, reason="Unkno
                     pos_side = "LONG" if direction.upper() == "BUY" else "SHORT"
 
                     if hasattr(client, "set_sl_tp"):
-                        client.set_sl_tp(symbol, pos_side, tp=tp_price, sl=sl_price, quantity=quantity)
-                        info(f"✅ SL/TP set for {symbol} (TP: {tp_price}, SL: {sl_price})")
+                        success = client.set_sl_tp(symbol, pos_side, tp=tp_price, sl=sl_price, quantity=quantity)
+                        if success:
+                            info(f"✅ SL/TP set for {symbol} (TP: {tp_price}, SL: {sl_price})")
+                        else:
+                            error(f"❌ SL/TP FAILED for {symbol} — позиция открыта БЕЗ защиты!")
+                            # Verify and retry once
+                            open_orders = client.get_open_orders(symbol)
+                            sl_tp_types = {"STOP_MARKET", "TAKE_PROFIT_MARKET"}
+                            existing = {o.get("type") for o in open_orders} & sl_tp_types
+                            missing = sl_tp_types - existing
+                            if missing:
+                                warning(f"⚠️ {symbol}: Retry SL/TP — missing: {missing}")
+                                retry_tp = tp_price if "TAKE_PROFIT_MARKET" in missing else None
+                                retry_sl = sl_price if "STOP_MARKET" in missing else None
+                                retry_ok = client.set_sl_tp(symbol, pos_side, tp=retry_tp, sl=retry_sl, quantity=quantity)
+                                if retry_ok:
+                                    info(f"✅ SL/TP retry succeeded for {symbol}")
+                                else:
+                                    error(f"❌ SL/TP retry FAILED for {symbol} — ТРЕБУЕТСЯ РУЧНАЯ УСТАНОВКА!")
                     else:
                         warning(f"⚠️ Client does not support set_sl_tp, SL/TP might not be set")
                 except Exception as e:
@@ -295,7 +312,11 @@ def execute_prediction(prediction):
                 info(f"🔄 {symbol}: Проверка обновления SL/TP (SL: {ai_sl}, TP: {ai_tp})")
                 try:
                     if hasattr(client, "set_sl_tp"):
-                        client.set_sl_tp(symbol, pos_side, tp=ai_tp, sl=ai_sl)
+                        success = client.set_sl_tp(symbol, pos_side, tp=ai_tp, sl=ai_sl)
+                        if success:
+                            info(f"✅ {symbol}: SL/TP updated (SL: {ai_sl}, TP: {ai_tp})")
+                        else:
+                            error(f"❌ {symbol}: SL/TP update FAILED — позиция БЕЗ актуальной защиты!")
                     else:
                         warning(f"⚠️ Client does not support set_sl_tp")
                 except Exception as e:

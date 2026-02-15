@@ -229,10 +229,13 @@ class TestHoldSignal:
     """Tests for HOLD signal generation."""
 
     def test_hold_on_low_score(self, generator):
-        # Only EMA signal, not enough to meet min_score=5
+        # Only EMA signal (+2), no other confirmations, not enough to meet min_score
         analysis = _base_analysis(
             ema9=50100, ema21=50000,  # +2
             rsi=50,                   # Not in any zone -> 0
+            support=45000,            # Far from price -> 0
+            resistance=55000,         # Far from price -> 0
+            volume_ratio=0.5,         # Below 0.8x -> no volume point
         )
         result = generator.generate_signal(analysis)
         assert result["signal"] == "HOLD"

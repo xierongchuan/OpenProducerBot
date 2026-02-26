@@ -66,52 +66,43 @@ class BingXClient(ExchangeClient):
         ).hexdigest()
         return signature
 
-    def make_request(self, method, endpoint, params=None):
-        """Выполняет запрос к API BingX"""
-        if params is None:
-            params = {}
-
+    def _build_query(self, params):
+        """Build signed query string with fresh timestamp."""
         params["timestamp"] = int(time.time() * 1000)
 
-        # Manually construct the query string to ensure exact match for signature
         if self.api_key and self.secret_key:
             params["apiKey"] = self.api_key
-            # Sort and encode params
             query_string = urlencode(sorted(params.items()))
-            # Calculate signature on the exact string we will send
             signature = hmac.new(
                 self.secret_key.encode("utf-8"),
                 query_string.encode("utf-8"),
                 digestmod=hashlib.sha256
             ).hexdigest()
-            # Append signature
-            final_query_string = f"{query_string}&signature={signature}"
-
-            headers = {
-                "X-BX-APIKEY": self.api_key,
-            }
+            return f"{query_string}&signature={signature}", {"X-BX-APIKEY": self.api_key}
         else:
-            final_query_string = urlencode(sorted(params.items()))
-            headers = {}
+            return urlencode(sorted(params.items())), {}
+
+    def make_request(self, method, endpoint, params=None):
+        """Выполняет запрос к API BingX"""
+        if params is None:
+            params = {}
 
         url = f"{self.base_url}{endpoint}"
-
         max_retries = 3
         retry_delay = 1
 
         for attempt in range(max_retries):
+            # Fresh timestamp + signature on every attempt
+            final_query_string, headers = self._build_query(params)
+
             try:
                 if method.lower() == "get":
-                    # For GET, append to URL
                     full_url = f"{url}?{final_query_string}"
                     response = requests.get(full_url, headers=headers, timeout=6)
                 elif method.lower() == "post":
-                    # For POST, send as body
-                    # Ensure correct content type
                     headers["Content-Type"] = "application/x-www-form-urlencoded"
                     response = requests.post(url, data=final_query_string, headers=headers, timeout=6)
                 elif method.lower() == "delete":
-                    # For DELETE, BingX might expect params in URL
                     full_url = f"{url}?{final_query_string}"
                     response = requests.delete(full_url, headers=headers, timeout=6)
                 else:

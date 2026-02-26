@@ -236,6 +236,25 @@ def calculate_sma_series(values, period):
 
     return sma_values
 
+
+def calculate_ema_series(values, period):
+    """Calculates EMA series for a list of values. Returns array aligned with input."""
+    n = len(values)
+    if n < period:
+        return [0.0] * n
+
+    ema_values = [0.0] * (period - 1)
+    # Seed with SMA
+    sma_seed = sum(values[:period]) / period
+    ema_values.append(sma_seed)
+
+    multiplier = 2.0 / (period + 1)
+    for i in range(period, n):
+        ema_val = (values[i] - ema_values[-1]) * multiplier + ema_values[-1]
+        ema_values.append(ema_val)
+
+    return ema_values
+
 def calculate_rsi_series(prices, period=14):
     """Calculates RSI series."""
     if len(prices) < period + 1:
@@ -386,7 +405,7 @@ from src.exchanges.exchange_factory import get_exchange_client
 
 def analyze_htf(symbol):
     """
-    Analyzes higher-timeframe (1H) data for INTRADAY multi-timeframe context.
+    Analyzes higher-timeframe (1H) data for AISCALP multi-timeframe context.
 
     Returns:
         dict with htf_trend, htf_ema_fast, htf_ema_slow, htf_rsi, daily_bias, daily_change_pct
@@ -394,7 +413,7 @@ def analyze_htf(symbol):
     """
     from src.config import BOT_CONFIG
 
-    mtf_cfg = BOT_CONFIG.get("INTRADAY_SETTINGS", {}).get("multi_timeframe", {})
+    mtf_cfg = BOT_CONFIG.get("AISCALP_SETTINGS", {}).get("multi_timeframe", {})
     if not mtf_cfg.get("enabled", True):
         return None
 
@@ -402,11 +421,11 @@ def analyze_htf(symbol):
         from src.core.collector import fetch_htf_prices
         htf_prices = fetch_htf_prices(symbol)
         if not htf_prices:
-            warning(f"⚠️ [INTRADAY] HTF data unavailable for {symbol}")
+            warning(f"⚠️ [AISCALP] HTF data unavailable for {symbol}")
             return None
 
         if len(htf_prices) < 10:
-            warning(f"⚠️ [INTRADAY] Not enough HTF data: {len(htf_prices) if htf_prices else 0} candles")
+            warning(f"⚠️ [AISCALP] Not enough HTF data: {len(htf_prices) if htf_prices else 0} candles")
             return None
 
         htf_closes = [get_price_value(p.get("closePrice", 0)) for p in htf_prices]
@@ -460,11 +479,11 @@ def analyze_htf(symbol):
             "daily_change_pct": round(daily_change_pct, 2),
         }
 
-        info(f"🌐 [INTRADAY] HTF: trend={htf_trend}, RSI={htf_rsi:.1f}, bias={daily_bias} ({daily_change_pct:+.2f}%)")
+        info(f"🌐 [AISCALP] HTF: trend={htf_trend}, RSI={htf_rsi:.1f}, bias={daily_bias} ({daily_change_pct:+.2f}%)")
         return result
 
     except Exception as e:
-        error(f"❌ [INTRADAY] HTF analysis error: {e}")
+        error(f"❌ [AISCALP] HTF analysis error: {e}")
         return None
 
 
@@ -719,7 +738,7 @@ def analyze_symbol(symbol, position=None, decision_context=""):
     from src.config import CHART_RANGES, DEFAULT_CHART_RANGE, SMART_SAMPLING, MOMENTUM_STRATEGY, STRATEGY_STYLE, STYLE_PRESETS
 
     # Get current style settings
-    current_style = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS["INTRADAY"])
+    current_style = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS["AISCALP"])
     current_interval = current_style.get("timeframe", "5m")
 
     # Используем настройки из конфига (с приоритетом MOMENTUM_STRATEGY если задано вручную)
@@ -787,11 +806,12 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         calculation_data = prices
 
     # === CALCULATE HISTORY SERIES (On Full Calculation Data) ===
-    # This ensures indicators (RSI, SMA) have "warmup" data and don't start with 0.
+    # This ensures indicators (RSI, EMA) have "warmup" data and don't start with 0.
     hist_closes = [get_price_value(p.get("closePrice", 0)) for p in calculation_data]
     hist_rsi = calculate_rsi_series(hist_closes)
-    hist_sma = calculate_sma_series(hist_closes, AI_THRESHOLDS["SMA_PERIOD"])
-    _, hist_seb_upper, hist_seb_lower = calculate_seb_series(hist_closes)
+    _ema_periods = TECHNICAL_ANALYSIS.get("ema_periods", [9, 21])
+    hist_ema9 = calculate_ema_series(hist_closes, _ema_periods[0])
+    hist_ema21 = calculate_ema_series(hist_closes, _ema_periods[1] if len(_ema_periods) > 1 else 21)
 
     # === SLICING FOR PROMPT CONTEXT ===
     # Now we trim the data to fit the AI Context Limit (e.g. 336 candles),
@@ -803,15 +823,13 @@ def analyze_symbol(symbol, position=None, decision_context=""):
 
         # Slice the indicators to match
         final_rsi = hist_rsi[-context_limit:]
-        final_sma = hist_sma[-context_limit:]
-        final_seb_u = hist_seb_upper[-context_limit:]
-        final_seb_l = hist_seb_lower[-context_limit:]
+        final_ema9 = hist_ema9[-context_limit:]
+        final_ema21 = hist_ema21[-context_limit:]
     else:
         final_prices = calculation_data
         final_rsi = hist_rsi
-        final_sma = hist_sma
-        final_seb_u = hist_seb_upper
-        final_seb_l = hist_seb_lower
+        final_ema9 = hist_ema9
+        final_ema21 = hist_ema21
 
     # Формируем таблицу свечей
     candle_lines = []
@@ -825,15 +843,11 @@ def analyze_symbol(symbol, position=None, decision_context=""):
 
         # Access indicators by index (they are now aligned with final_prices)
         row_rsi = final_rsi[i]
-        row_sma = final_sma[i]
-        row_seb_u = final_seb_u[i]
-        row_seb_l = final_seb_l[i]
+        row_ema9 = final_ema9[i]
+        row_ema21 = final_ema21[i]
 
-        body = "🟢" if c > o else "🔴" if c < o else "⚪"
-
-        # Format: Time|O|H|L|C|Vol|RSI|SMA|SEB_U|SEB_L|Pat
-        # Using pipe for clear limitation. Formatting floats to save space but keep precision.
-        candle_lines.append(f"{ts}|{o:.2f}|{h:.2f}|{l:.2f}|{c:.2f}|{v:.1f}|{row_rsi:.1f}|{row_sma:.2f}|{row_seb_u:.2f}|{row_seb_l:.2f}|{body}")
+        # Format: Time|O|H|L|C|Vol|RSI|EMA9|EMA21
+        candle_lines.append(f"{ts}|{o:.2f}|{h:.2f}|{l:.2f}|{c:.2f}|{v:.1f}|{row_rsi:.1f}|{row_ema9:.2f}|{row_ema21:.2f}")
 
     candle_history = "\n".join(candle_lines)
 
@@ -918,12 +932,12 @@ def analyze_symbol(symbol, position=None, decision_context=""):
             if close_signal.get("should_close"):
                 info(f"🔧 [HYBRID] Close signal: {close_signal['reason']}")
 
-    # === INTRADAY MODE: HTF + Session + Deterministic Signal ===
+    # === AISCALP MODE: HTF + Session + Deterministic Signal ===
     htf_data = None
     session_data = None
 
-    if STRATEGY_STYLE == "INTRADAY":
-        from src.core.intraday_signal import generate_intraday_signal, intraday_should_close, intraday_pre_filter
+    if STRATEGY_STYLE == "AISCALP":
+        from src.core.aiscalp_signal import generate_aiscalp_signal, aiscalp_should_close, aiscalp_pre_filter
         from src.core.session import get_session_info
 
         # 1. HTF analysis
@@ -957,9 +971,9 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         }
 
         # 4. Pre-filter
-        should_proceed, filter_reason = intraday_pre_filter(signal_input, htf_data, session_data)
+        should_proceed, filter_reason = aiscalp_pre_filter(signal_input, htf_data, session_data)
         if not should_proceed:
-            info(f"🔧 [INTRADAY] Pre-filter skip: {filter_reason}")
+            info(f"🔧 [AISCALP] Pre-filter skip: {filter_reason}")
             signal_data = {
                 "signal": "HOLD", "score": 0, "max_score": 13,
                 "quality": 0.0, "confidence": 0.0,
@@ -972,20 +986,20 @@ def analyze_symbol(symbol, position=None, decision_context=""):
             try:
                 from src.core.regime import detect_regime
                 regime_data = detect_regime(signal_input)
-                info(f"🌐 [INTRADAY] Regime: {regime_data['regime']} (trend={regime_data.get('trend_strength', 0):.2f}, vol={regime_data.get('volatility_state', '?')})")
+                info(f"🌐 [AISCALP] Regime: {regime_data['regime']} (trend={regime_data.get('trend_strength', 0):.2f}, vol={regime_data.get('volatility_state', '?')})")
             except Exception as e:
-                warning(f"⚠️ [INTRADAY] Regime detection failed: {e}")
+                warning(f"⚠️ [AISCALP] Regime detection failed: {e}")
                 regime_data = None
 
-            # 6. Generate intraday signal
-            signal_data = generate_intraday_signal(signal_input, htf_data, session_data, regime=regime_data)
-            info(f"🔧 [INTRADAY] Signal: {signal_data['signal']} (score: {signal_data['score']}, Q: {signal_data.get('quality', 0):.2f})")
+            # 6. Generate AISCALP signal
+            signal_data = generate_aiscalp_signal(signal_input, htf_data, session_data, regime=regime_data)
+            info(f"🔧 [AISCALP] Signal: {signal_data['signal']} (score: {signal_data['score']}, Q: {signal_data.get('quality', 0):.2f})")
 
         # 7. Close signal check
         if position:
-            close_signal = intraday_should_close(signal_input, position, htf_data)
+            close_signal = aiscalp_should_close(signal_input, position, htf_data)
             if close_signal.get("should_close"):
-                info(f"🔧 [INTRADAY] Close signal: {close_signal['reason']}")
+                info(f"🔧 [AISCALP] Close signal: {close_signal['reason']}")
 
     # === СБОРКА ПРОМПТА ===
     from src.prompts.builder import PromptBuilder
@@ -1033,10 +1047,10 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         "min_confidence": min_confidence,
         "is_momentum_market": is_momentum_market,
         "decision_history": decision_context,
-        # HYBRID / INTRADAY mode specific
+        # HYBRID / AISCALP mode specific
         "signal_data": signal_data,
         "close_signal": close_signal,
-        # INTRADAY specific
+        # AISCALP specific
         "htf_data": htf_data,
         "session_data": session_data,
     }
@@ -1058,11 +1072,11 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         "position": position,
         "prompt": prompt.strip(),
         "prompt_ctx": prompt_ctx,
-        # HYBRID / INTRADAY mode specific
+        # HYBRID / AISCALP mode specific
         "signal_data": signal_data,
         "close_signal": close_signal,
         "regime": regime_data,
-        # INTRADAY specific
+        # AISCALP specific
         "htf_data": htf_data,
         "session_data": session_data,
     }

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { getConfig, updateConfig, validateConfig } from '../api/client';
 import { Spinner } from '../components/Spinner';
 
-const STRATEGY_OPTIONS = ['SCALP', 'INTRADAY', 'SWING', 'GRID', 'HYBRID'];
+const STRATEGY_OPTIONS = ['SCALP', 'AISCALP', 'SWING', 'GRID', 'HYBRID'];
 
 type SaveResult = {
   changes?: { hot_reloadable: string[]; restart_required: string[] };

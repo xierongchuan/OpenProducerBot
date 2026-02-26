@@ -120,7 +120,7 @@ def run_pipeline():
 def run_multiprocess_pipeline():
     """Запускает отдельный процесс для каждого символа (Multiprocessing)"""
     import multiprocessing
-    from src.config import SYMBOLS, STRATEGY_STYLE, BOT_CONFIG, STYLE_PRESETS
+    from src.config import SYMBOLS, STRATEGY_STYLE, BOT_CONFIG, STYLE_PRESETS, CHART_SETTINGS
     from src.core.process_worker import run_symbol_pipeline
     from src.core.chart_worker import run_chart_worker
 
@@ -186,17 +186,21 @@ def run_multiprocess_pipeline():
         if len(SYMBOLS) > 5:
             time.sleep(2)  # 2 секунды между запусками при >5 символов
 
-    # 2. Запускаем отдельный процесс для графиков
-    chart_p = multiprocessing.Process(
-        target=run_chart_worker,
-        name="Worker-Charts"
-    )
-    # ВАЖНО: chart_p НЕ может быть демоном, так как он сам порождает процессы (ProcessPoolExecutor)
-    chart_p.daemon = False
-    processes.append(chart_p)
-    chart_p.start()
-    print(f"   🎨 Запущен процесс генерации графиков (PID: {chart_p.pid})")
-    info(f"🎨 Запущен процесс генерации графиков (PID: {chart_p.pid})")
+    # 2. Запускаем отдельный процесс для графиков (если включен)
+    if CHART_SETTINGS.get("enabled", True):
+        chart_p = multiprocessing.Process(
+            target=run_chart_worker,
+            name="Worker-Charts"
+        )
+        # ВАЖНО: chart_p НЕ может быть демоном, так как он сам порождает процессы (ProcessPoolExecutor)
+        chart_p.daemon = False
+        processes.append(chart_p)
+        chart_p.start()
+        print(f"   🎨 Запущен процесс генерации графиков (PID: {chart_p.pid})")
+        info(f"🎨 Запущен процесс генерации графиков (PID: {chart_p.pid})")
+    else:
+        print("   🎨 Генерация графиков отключена (CHART_SETTINGS.enabled=false)")
+        info("🎨 Генерация графиков отключена через конфиг")
 
     print("✅ Все процессы запущены. Нажмите Ctrl+C для остановки.")
     info("✅ Все процессы запущены")

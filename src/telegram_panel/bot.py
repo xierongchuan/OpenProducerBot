@@ -216,6 +216,16 @@ async def cmd_chart(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         symbol = all_symbols[0] if all_symbols else "BTCUSDT"
 
     chart_path = find_latest_chart(symbol)
+
+    # Если график не найден — пробуем сгенерировать на лету
+    if chart_path is None:
+        try:
+            from src.core.plotter import plot_symbol
+            plot_symbol(symbol)
+            chart_path = find_latest_chart(symbol)
+        except Exception as e:
+            logger.warning("On-demand chart generation failed for %s: %s", symbol, e)
+
     if chart_path is None:
         await update.message.reply_text(f"No charts available for {symbol}")  # type: ignore[union-attr]
         return

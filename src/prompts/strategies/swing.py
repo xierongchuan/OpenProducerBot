@@ -8,7 +8,7 @@ SWING mode:
 4. Patience-first mentality: HOLD is default action
 5. Deterministic signal system + AI confirmation (like HYBRID)
 
-Key differences from HYBRID/INTRADAY:
+Key differences from HYBRID/AISCALP:
 - Multi-timeframe context (Daily > 4H > 1H hierarchy)
 - Higher confidence threshold (0.85)
 - Daily structure breaks as primary exit signal

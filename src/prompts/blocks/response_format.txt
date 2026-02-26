@@ -16,9 +16,3 @@ JUST THE RAW JSON OBJECT.
 
     "reason": "СТРОГО: [SETUP_TYPE] | [KEY_REASON] | [RISK_LEVEL]"
 }}}}
-
-
-Пример reason:
-- "Momentum Breakout | 3 Green Candles + Vol Surge | Risk: Low"
-- "Trend Pullback | EMA9 Support Rejection | Risk: Medium"
-- "Hold | Choppy Market, No Clear Trend | Risk: High"

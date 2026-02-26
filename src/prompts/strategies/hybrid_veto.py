@@ -19,7 +19,7 @@ class HybridVetoStrategy(BaseStrategy):
         return "Evaluate whether the deterministic signal has acceptable risk. Reject only when you detect clear danger the scoring system cannot see."
 
     def get_time_horizon(self) -> str:
-        return "Intraday: 4-12 hours."
+        return "Short-term: 4-12 hours."
 
     def get_strategy_section(self, ctx: dict) -> str:
         signal_data = ctx.get("signal_data") or {}

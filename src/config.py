@@ -171,11 +171,11 @@ def reload_bot_config() -> dict:
     NEWS_SETTINGS = BOT_CONFIG.get("NEWS_SETTINGS", {})
     SMART_SAMPLING = BOT_CONFIG.get("SMART_SAMPLING", {"enabled": True, "recent_candles": 30, "history_step": 10})
     ENABLE_AI_SKIP_ON_RSI = BOT_CONFIG.get("ENABLE_AI_SKIP_ON_RSI", True)
-    DECISION_JOURNAL = BOT_CONFIG.get("DECISION_JOURNAL", {"enabled": True, "max_entries": {"SCALP": 5, "INTRADAY": 10, "SWING": 10}})
+    DECISION_JOURNAL = BOT_CONFIG.get("DECISION_JOURNAL", {"enabled": True, "max_entries": {"SCALP": 5, "AISCALP": 10, "SWING": 10}})
     POSITION_LIMITS = BOT_CONFIG.get("POSITION_LIMITS", {"max_positions": 5, "price_precision": 4, "quantity_precision": 4, "balance_safety_margin": 0.95, "position_sync_wait": 1.0})
     VALIDATION = BOT_CONFIG.get("VALIDATION", {"rr_soft_limit": 0.5})
     TECHNICAL_ANALYSIS = BOT_CONFIG.get("TECHNICAL_ANALYSIS", {"sr_window": 20, "ema_periods": [9, 21], "trend_candle_count": 5, "volume_avg_window": 20, "volume_thresholds": {"anomaly": 2.0, "elevated": 1.2, "low": 0.5}, "seb_length": 20, "seb_multiplier": 2.0, "momentum_volume_threshold": 1.2, "momentum_trend_volume_threshold": 1.0, "news_items_in_prompt": 5})
-    CHART_SETTINGS = BOT_CONFIG.get("CHART_SETTINGS", {"update_interval": 10, "min_sleep": 0.5, "sma_periods": [10, 20, 50, 100, 200], "chart_height": 13.5, "dpi": 200})
+    CHART_SETTINGS = BOT_CONFIG.get("CHART_SETTINGS", {"enabled": True, "update_interval": 10, "min_sleep": 0.5, "sma_periods": [10, 20, 50, 100, 200], "chart_height": 13.5, "dpi": 200})
     ERROR_HANDLING = BOT_CONFIG.get("ERROR_HANDLING", {"cycle_error_fallback_sleep": 5})
     MOMENTUM_STRATEGY = BOT_CONFIG.get("MOMENTUM_STRATEGY", {
         "enabled": True, "atr_sl_multiplier": 1.5, "atr_tp_multiplier": 2.5,
@@ -184,7 +184,7 @@ def reload_bot_config() -> dict:
         "momentum_consecutive_candles": 3
     })
 
-    STRATEGY_STYLE = BOT_CONFIG.get("STRATEGY_STYLE", "INTRADAY")
+    STRATEGY_STYLE = BOT_CONFIG.get("STRATEGY_STYLE", "AISCALP")
     STYLE_PRESETS = BOT_CONFIG.get("STYLE_PRESETS", DEFAULT_STYLE_PRESETS)
     SCALP_SETTINGS = BOT_CONFIG.get("SCALP_SETTINGS", SCALP_SETTINGS)
 
@@ -200,7 +200,7 @@ def reload_bot_config() -> dict:
     TRADING_FEE = TRADING_FEE_TAKER
 
     # Reapply style preset
-    current_preset = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS.get("INTRADAY", {}))
+    current_preset = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS.get("AISCALP", {}))
     if "atr_sl_multiplier" not in MOMENTUM_STRATEGY:
         MOMENTUM_STRATEGY["atr_sl_multiplier"] = current_preset.get("atr_sl_mult", 2.0)
     if "atr_tp_multiplier" not in MOMENTUM_STRATEGY:
@@ -315,11 +315,11 @@ NEWS_SETTINGS = BOT_CONFIG.get("NEWS_SETTINGS", {})
 SMART_SAMPLING = BOT_CONFIG.get("SMART_SAMPLING", {"enabled": True, "recent_candles": 30, "history_step": 10})
 MIN_RISK_REWARD_RATIO = BOT_CONFIG.get("MIN_RISK_REWARD_RATIO", 1.5)
 ENABLE_AI_SKIP_ON_RSI = BOT_CONFIG.get("ENABLE_AI_SKIP_ON_RSI", True)
-DECISION_JOURNAL = BOT_CONFIG.get("DECISION_JOURNAL", {"enabled": True, "max_entries": {"SCALP": 5, "INTRADAY": 10, "SWING": 10}})
+DECISION_JOURNAL = BOT_CONFIG.get("DECISION_JOURNAL", {"enabled": True, "max_entries": {"SCALP": 5, "AISCALP": 10, "SWING": 10}})
 POSITION_LIMITS = BOT_CONFIG.get("POSITION_LIMITS", {"max_positions": 5, "price_precision": 4, "quantity_precision": 4, "balance_safety_margin": 0.95, "position_sync_wait": 1.0})
 VALIDATION = BOT_CONFIG.get("VALIDATION", {"rr_soft_limit": 0.5})
 TECHNICAL_ANALYSIS = BOT_CONFIG.get("TECHNICAL_ANALYSIS", {"sr_window": 20, "ema_periods": [9, 21], "trend_candle_count": 5, "volume_avg_window": 20, "volume_thresholds": {"anomaly": 2.0, "elevated": 1.2, "low": 0.5}, "seb_length": 20, "seb_multiplier": 2.0, "momentum_volume_threshold": 1.2, "momentum_trend_volume_threshold": 1.0, "news_items_in_prompt": 5})
-CHART_SETTINGS = BOT_CONFIG.get("CHART_SETTINGS", {"update_interval": 10, "min_sleep": 0.5, "sma_periods": [10, 20, 50, 100, 200], "chart_height": 13.5, "dpi": 200})
+CHART_SETTINGS = BOT_CONFIG.get("CHART_SETTINGS", {"enabled": True, "update_interval": 10, "min_sleep": 0.5, "sma_periods": [10, 20, 50, 100, 200], "chart_height": 13.5, "dpi": 200})
 ERROR_HANDLING = BOT_CONFIG.get("ERROR_HANDLING", {"cycle_error_fallback_sleep": 5})
 MOMENTUM_STRATEGY = BOT_CONFIG.get("MOMENTUM_STRATEGY", {
     "enabled": True,
@@ -332,7 +332,7 @@ MOMENTUM_STRATEGY = BOT_CONFIG.get("MOMENTUM_STRATEGY", {
     "momentum_consecutive_candles": 3
 })
 
-# SCALP Settings (separate from HYBRID/INTRADAY)
+# SCALP Settings (separate from HYBRID/AISCALP)
 SCALP_SETTINGS = BOT_CONFIG.get("SCALP_SETTINGS", {
     "enabled": True,
     "signal_rules": {},
@@ -346,8 +346,8 @@ SCALP_SETTINGS = BOT_CONFIG.get("SCALP_SETTINGS", {
     "ai_integration": {"regime_enabled": True, "veto_enabled": True}
 })
 
-# Trading Style Settings (Scalp / Intraday / Swing)
-STRATEGY_STYLE = BOT_CONFIG.get("STRATEGY_STYLE", "INTRADAY")  # Default to INTRADAY
+# Trading Style Settings (Scalp / AiScalp / Swing)
+STRATEGY_STYLE = BOT_CONFIG.get("STRATEGY_STYLE", "AISCALP")  # Default to AISCALP
 
 # Presets for different styles (Can be overridden by bot_config.json if keys exist there)
 # Presets for different styles (Can be overridden by bot_config.json if keys exist there)
@@ -362,14 +362,14 @@ DEFAULT_STYLE_PRESETS = {
         "atr_tp_mult": 2.0,
         "description": "High frequency, small moves, strict exits."
     },
-    "INTRADAY": {
-        "timeframe": "5m",
+    "AISCALP": {
+        "timeframe": "1m",
         "chart_period": "1D",
         "plotter_period": "12h",
         "loop_interval": 60, # Standard search
         "position_check_interval": 10, # Balanced monitoring (10s)
-        "atr_sl_mult": 2.0,
-        "atr_tp_mult": 3.0,
+        "atr_sl_mult": 5.0,
+        "atr_tp_mult": 7.0,
         "description": "Day trading, capturing daily trends."
     },
     "SWING": {
@@ -380,13 +380,13 @@ DEFAULT_STYLE_PRESETS = {
         "position_check_interval": 60, # Check positions every minute
         "atr_sl_mult": 3.0,
         "atr_tp_mult": 6.0, # Target large moves
-        "description": "Multi-day holding (Days/Weeks), wide stops, ignoring intraday noise."
+        "description": "Multi-day holding (Days/Weeks), wide stops, ignoring short-term noise."
     }
 }
 STYLE_PRESETS = BOT_CONFIG.get("STYLE_PRESETS", DEFAULT_STYLE_PRESETS)
 
 # Apply style preset if values are missing in specific configs
-current_preset = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS["INTRADAY"])
+current_preset = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS["AISCALP"])
 if "atr_sl_multiplier" not in MOMENTUM_STRATEGY:
     MOMENTUM_STRATEGY["atr_sl_multiplier"] = current_preset["atr_sl_mult"]
 if "atr_tp_multiplier" not in MOMENTUM_STRATEGY:

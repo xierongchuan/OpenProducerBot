@@ -312,8 +312,8 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                                             info(f"🔧 [{symbol}] HYBRID: AI tried {ai_action} but signal was {signal} - forcing HOLD")
                                             prediction["action"] = "hold"
                                             prediction["reason"] = f"[HYBRID] AI rejected {signal} signal"
-                elif STRATEGY_STYLE == "INTRADAY":
-                    # INTRADAY pipeline: pre-filter → signal scoring → regime → risk → AI (always)
+                elif STRATEGY_STYLE == "AISCALP":
+                    # AISCALP pipeline: pre-filter → signal scoring → regime → risk → AI (always)
                     signal_data = analysis_result.get("signal_data", {})
                     signal = signal_data.get("signal", "HOLD")
                     signal_quality = signal_data.get("quality", 0.0)
@@ -388,7 +388,7 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                     if real_position and close_signal and close_signal.get("should_close"):
                         close_reason = close_signal.get("reason", "Deterministic exit")
                         close_urgency = close_signal.get("urgency", "medium")
-                        info(f"🚨 [{symbol}] INTRADAY close signal: {close_reason} (urgency: {close_urgency})")
+                        info(f"🚨 [{symbol}] AISCALP close signal: {close_reason} (urgency: {close_urgency})")
                         # Pass close signal info to AI as recommendation
                         analysis_result["deterministic_close"] = {
                             "should_close": True,
@@ -399,11 +399,11 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                     # Log signal status
                     score = signal_data.get("score", 0)
                     max_score = signal_data.get("max_score", 13)
-                    info(f"🔧 [{symbol}] INTRADAY: signal={signal} score={score}/{max_score} Q={signal_quality:.2f} [{regime_label}]")
+                    info(f"🔧 [{symbol}] AISCALP: signal={signal} score={score}/{max_score} Q={signal_quality:.2f} [{regime_label}]")
 
                     # === ALWAYS invoke AI — it makes the final decision ===
                     with StageTimer("AI Прогноз", symbol, "🧠"):
-                        info(f"🧠 [{symbol}] INTRADAY: AI invoked (signal={signal}, regime={regime_label})")
+                        info(f"🧠 [{symbol}] AISCALP: AI invoked (signal={signal}, regime={regime_label})")
                         prediction = predict.process_analysis(analysis_result)
 
                         # Use dynamic SL/TP if AI didn't provide its own
@@ -465,7 +465,7 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                     executor.execute_prediction(prediction, all_positions=all_positions)
 
                 # 6b. Запись контекста входа для performance tracking (HYBRID)
-                if action in ("buy", "sell") and not real_position and STRATEGY_STYLE in ("HYBRID", "INTRADAY"):
+                if action in ("buy", "sell") and not real_position and STRATEGY_STYLE in ("HYBRID", "AISCALP"):
                     try:
                         entry_ctx = {
                             "entry_regime": regime_data.get("regime", "UNKNOWN") if regime_data else "UNKNOWN",

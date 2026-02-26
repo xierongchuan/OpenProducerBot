@@ -41,16 +41,16 @@
 
 ### Интеллектуальный анализ
 - **Multi-Model AI Core**: Поддержка Gemini, Claude, DeepSeek и других моделей через единый интерфейс OpenRouter.
-- **Детерминированные сигналы + AI**: В режиме HYBRID/INTRADAY сигналы генерируются математически (scoring system), AI лишь подтверждает или отклоняет.
+- **Детерминированные сигналы + AI**: В режиме HYBRID/AISCALP сигналы генерируются математически (scoring system), AI лишь подтверждает или отклоняет.
 - **Market Regime Detection**: Автоклассификация рынка (TRENDING / RANGING / VOLATILE / TRANSITIONAL) с адаптацией всех параметров.
-- **Multi-Timeframe Analysis**: INTRADAY стратегия использует HTF (1H) для определения глобального тренда и сессионную фильтрацию.
+- **Multi-Timeframe Analysis**: AISCALP стратегия использует HTF (1H) для определения глобального тренда и сессионную фильтрацию.
 - **Smart Sampling**: Сжатие исторических данных для AI-контекста с сохранением экстремумов.
 
 ### Высокая производительность
 - **True Multiprocessing**: Каждый торговый актив работает в отдельном изолированном процессе ОС.
 - **WebSocket Cache**: Опциональный реальном-время кэш свечей через WebSocket с автоматическим fallback на REST.
 - **Hot-Reload Config**: `bot_config.json` проверяется каждые 30 секунд, изменения применяются без перезапуска.
-- **Dynamic Loop**: Частота анализа адаптируется под стиль (1.5s SCALP → 60s INTRADAY → 4h SWING).
+- **Dynamic Loop**: Частота анализа адаптируется под стиль (1.5s SCALP → 60s AISCALP → 4h SWING).
 
 ### Продвинутый риск-менеджмент
 - **Dynamic SL/TP**: Расчёт на основе ATR + уровни поддержки/сопротивления + рыночный режим + качество сигнала.
@@ -72,12 +72,12 @@
 | Стиль | Таймфрейм | Цикл | Плечо | Описание |
 |-------|-----------|------|-------|----------|
 | **SCALP** | 1m | 1.5s | 15x | Dual-loop движок (быстрый 1.5s + медленный 45s). Trailing stops, breakeven, time exits. OB imbalance + VWAP. Max hold: 15 мин |
-| **INTRADAY** | 5m | 60s | 10x | Multi-TF анализ (5m + 1H). Сессионная фильтрация (ASIAN/EUROPEAN/US). HTF trend alignment. 4-12 часов |
+| **AISCALP** | 1m | 60s | 10x | Multi-TF анализ (1m + 1H). Сессионная фильтрация (ASIAN/EUROPEAN/US). HTF trend alignment. 4-12 часов |
 | **SWING** | 1h | 4h | 5x | Многодневное удержание (2-14 дней). Min hold 24h, cooldown 6h. Milestone exits. Широкие стопы (3x ATR) |
 | **GRID** | 1m | 5s | 5x | Сетка лимитных ордеров. Inventory management. ADX-based pause при сильном тренде |
 | **HYBRID** | 5m | 60s | 10x | Детерминированные сигналы (scoring 0-10) + AI подтверждение. Авто-выполнение при quality >= 0.7, AI veto для borderline |
 
-### Система скоринга сигналов (HYBRID/INTRADAY)
+### Система скоринга сигналов (HYBRID/AISCALP)
 
 **Tier 1 — Направление** (обязательно хотя бы один):
 - EMA alignment (+2): ema9 > ema21 → LONG, ema9 < ema21 → SHORT
@@ -167,7 +167,7 @@ python3 src/core/plotter.py 1W    # за 1 неделю
 
 | Параметр | Тип | Описание | По умолчанию |
 |----------|-----|----------|:------------:|
-| `STRATEGY_STYLE` | String | Стиль торговли | `INTRADAY` |
+| `STRATEGY_STYLE` | String | Стиль торговли | `AISCALP` |
 | `EXCHANGE_SYMBOLS` | Dict | Торговые пары по биржам | `{"bingx": ["BTCUSDT"]}` |
 | `DISABLED_SYMBOLS` | List | Заблокированные символы | `[]` |
 | `POSITION_SIZE_PERCENT` | Float | % баланса на сделку | `10` |
@@ -217,7 +217,7 @@ python3 src/core/plotter.py 1W    # за 1 неделю
 
 Дополнительные параметры:
 - **SCALP**: `loops.fast_interval` (1.5s), `loops.slow_interval` (45s), `time_exit.max_hold_minutes` (15), `breakeven`, `trailing`
-- **INTRADAY**: `htf_timeframe` (1h), session-based filtering, `pre_filter` (skip dead markets)
+- **AISCALP**: `htf_timeframe` (1h), session-based filtering, `pre_filter` (skip dead markets)
 - **SWING**: `min_hold_hours` (24), `cooldown_after_close_hours` (6)
 - **GRID**: `grid_levels` (5), `grid_spacing_pct` (0.3%), `inventory_limit`, `emergency_stop_loss_pct`
 
@@ -259,7 +259,7 @@ src/
 │   ├── collector.py                # Сбор OHLCV данных
 │   ├── analyzer.py                 # Технический анализ (EMA, RSI, MACD, ATR, BB, SEB, S/R)
 │   ├── signal_generator.py         # Детерминированный скоринг (HYBRID)
-│   ├── intraday_signal.py          # Multi-TF скоринг (INTRADAY)
+│   ├── aiscalp_signal.py           # Multi-TF скоринг (AISCALP)
 │   ├── scalp_engine.py             # Dual-loop движок (SCALP)
 │   ├── scalp_signal.py             # Скоринг с OB/VWAP (SCALP)
 │   ├── regime.py                   # Детектор рыночного режима
@@ -282,7 +282,7 @@ src/
 ├── prompts/                        # AI промпт система
 │   ├── builder.py                  # Модульная сборка промптов
 │   ├── blocks/                     # Текстовые блоки (10 файлов)
-│   └── strategies/                 # 9 стратегий (Scalp/Intraday/Swing/Grid/Hybrid + варианты)
+│   └── strategies/                 # 9 стратегий (Scalp/AiScalp/Swing/Grid/Hybrid + варианты)
 ├── utils/                          # Утилиты
 │   ├── logger.py                   # Логирование (per-symbol + StageTimer)
 │   ├── helpers.py                  # Вспомогательные функции

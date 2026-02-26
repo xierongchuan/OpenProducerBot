@@ -1,3 +1,4 @@
+import os
 import time
 import json
 from src.config import *
@@ -5,6 +6,27 @@ from src.utils.logger import info, error, warning, log_trade
 from src.exchanges.exchange_factory import get_exchange_client
 
 # Файл кэша для хранения данных позиций (если нужно)
+
+
+def _save_sl_tp(symbol: str, sl: float, tp: float):
+    """Сохраняет SL/TP в active_trades.json для отображения на графике."""
+    import fcntl
+    path = os.path.join(DATA_DIR, "active_trades.json")
+    try:
+        with open(path, "r+") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                data = json.loads(f.read() or "{}")
+                if symbol in data:
+                    data[symbol]["sl"] = sl
+                    data[symbol]["tp"] = tp
+                    f.seek(0)
+                    f.truncate()
+                    json.dump(data, f, indent=4, default=str)
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+    except Exception as e:
+        warning(f"⚠️ Failed to save SL/TP to active_trades: {e}")
 
 
 def get_open_positions():
@@ -159,6 +181,10 @@ def create_order(symbol, direction, price, ai_sl=None, ai_tp=None, reason="Unkno
         )
 
         if order_id:
+            # Invalidate positions cache so set_sl_tp fetches actual position size
+            from src.exchanges.bingx_client import BingXClient
+            BingXClient.invalidate_positions_cache()
+
             # Set SL/TP immediately after order placement
             if tp_price or sl_price:
                 info(f"🔄 Setting SL/TP for new order {order_id}...")
@@ -167,9 +193,12 @@ def create_order(symbol, direction, price, ai_sl=None, ai_tp=None, reason="Unkno
                     pos_side = "LONG" if direction.upper() == "BUY" else "SHORT"
 
                     if hasattr(client, "set_sl_tp"):
-                        success = client.set_sl_tp(symbol, pos_side, tp=tp_price, sl=sl_price, quantity=quantity)
+                        # Don't pass quantity — let set_sl_tp fetch actual position size
+                        # from exchange to avoid mismatch with filled quantity
+                        success = client.set_sl_tp(symbol, pos_side, tp=tp_price, sl=sl_price)
                         if success:
                             info(f"✅ SL/TP set for {symbol} (TP: {tp_price}, SL: {sl_price})")
+                            _save_sl_tp(symbol, sl_price, tp_price)
                         else:
                             error(f"❌ SL/TP FAILED for {symbol} — позиция открыта БЕЗ защиты!")
                             # Verify and retry once
@@ -181,19 +210,17 @@ def create_order(symbol, direction, price, ai_sl=None, ai_tp=None, reason="Unkno
                                 warning(f"⚠️ {symbol}: Retry SL/TP — missing: {missing}")
                                 retry_tp = tp_price if "TAKE_PROFIT_MARKET" in missing else None
                                 retry_sl = sl_price if "STOP_MARKET" in missing else None
-                                retry_ok = client.set_sl_tp(symbol, pos_side, tp=retry_tp, sl=retry_sl, quantity=quantity)
+                                BingXClient.invalidate_positions_cache()
+                                retry_ok = client.set_sl_tp(symbol, pos_side, tp=retry_tp, sl=retry_sl)
                                 if retry_ok:
                                     info(f"✅ SL/TP retry succeeded for {symbol}")
+                                    _save_sl_tp(symbol, sl_price, tp_price)
                                 else:
                                     error(f"❌ SL/TP retry FAILED for {symbol} — ТРЕБУЕТСЯ РУЧНАЯ УСТАНОВКА!")
                     else:
                         warning(f"⚠️ Client does not support set_sl_tp, SL/TP might not be set")
                 except Exception as e:
                     error(f"❌ Failed to set SL/TP for new order {order_id}: {e}")
-
-            # Invalidate positions cache so next cycle gets fresh data
-            from src.exchanges.bingx_client import BingXClient
-            BingXClient.invalidate_positions_cache()
 
             log_trade(f"📌 {symbol}: открыт ордер {direction} по {price:.5f} "
                       f"(Qty={quantity}, TP={tp_price}, SL={sl_price}, ID={order_id}) "

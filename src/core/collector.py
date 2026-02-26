@@ -24,7 +24,7 @@ def fetch_prices(symbol):
         chart_config = CHART_RANGES.get(DEFAULT_CHART_RANGE, {})
 
         # 1. Get Target Interval (from Strategy Style)
-        current_preset = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS["INTRADAY"])
+        current_preset = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS["AISCALP"])
         target_interval_str = current_preset.get("timeframe", "1m") # e.g. "5m"
 
         # 2. Get Duration in minutes (from Chart Range)
@@ -85,8 +85,8 @@ def fetch_news(symbol):
     return news
 
 def fetch_htf_prices(symbol):
-    """Fetches higher-timeframe candles for INTRADAY multi-timeframe analysis."""
-    mtf_cfg = BOT_CONFIG.get("INTRADAY_SETTINGS", {}).get("multi_timeframe", {})
+    """Fetches higher-timeframe candles for AISCALP multi-timeframe analysis."""
+    mtf_cfg = BOT_CONFIG.get("AISCALP_SETTINGS", {}).get("multi_timeframe", {})
     if not mtf_cfg.get("enabled", True):
         return None
 

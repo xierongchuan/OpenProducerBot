@@ -6,9 +6,9 @@ from unittest.mock import patch
 
 @pytest.fixture(autouse=True)
 def mock_config():
-    """Provide INTRADAY_SETTINGS config for all tests."""
+    """Provide AISCALP_SETTINGS config for all tests."""
     config = {
-        "INTRADAY_SETTINGS": {
+        "AISCALP_SETTINGS": {
             "sessions": {
                 "enabled": True,
                 "definitions": {
@@ -17,8 +17,6 @@ def mock_config():
                     "US": {"start_utc": 13, "end_utc": 21},
                 },
                 "overlap_bonus": 1,
-                "dead_zone_hours": [21, 22, 23],
-                "dead_zone_penalty": -2,
             }
         }
     }
@@ -72,16 +70,15 @@ class TestGetSessionInfo:
         assert result["is_overlap"] is False
         assert result["session_quality"] == "MEDIUM"
 
-    def test_dead_zone(self):
-        """Hour 22 UTC — dead zone."""
+    def test_off_session_is_low(self):
+        """Hour 22 UTC — no active session, LOW quality."""
         result = _session_at_hour(22)
 
-        assert result["is_dead_zone"] is True
-        assert result["session_quality"] == "DEAD"
-        assert result["quality_score_adj"] == -2
+        assert result["session_quality"] == "LOW"
+        assert result["quality_score_adj"] == -1
 
-    def test_no_session_not_dead(self):
-        """Hour 23 is dead zone, but hour 8 is between ASIAN end and no other session."""
+    def test_between_sessions(self):
+        """Hour 8 is between ASIAN end and no other session."""
         result = _session_at_hour(8)
 
         # ASIAN ends at 8 (exclusive), no other active
@@ -92,7 +89,7 @@ class TestGetSessionInfo:
     def test_sessions_disabled(self):
         """Sessions disabled returns default."""
         config = {
-            "INTRADAY_SETTINGS": {
+            "AISCALP_SETTINGS": {
                 "sessions": {"enabled": False}
             }
         }
@@ -104,31 +101,27 @@ class TestGetSessionInfo:
                 assert result["session_quality"] == "MEDIUM"
                 assert result["quality_score_adj"] == 0
                 assert result["active_sessions"] == []
-                assert result["is_dead_zone"] is False
-
     def test_result_has_all_keys(self):
         """Verify all expected keys are present."""
         result = _session_at_hour(10)
 
         expected_keys = {
             "current_hour_utc", "active_sessions", "is_overlap",
-            "is_dead_zone", "session_quality", "quality_score_adj"
+            "session_quality", "quality_score_adj"
         }
         assert expected_keys == set(result.keys())
 
     def test_low_quality_no_session(self):
-        """No active session and not dead zone -> LOW quality."""
+        """No active session -> LOW quality."""
         # Configure with narrow sessions to have a gap
         config = {
-            "INTRADAY_SETTINGS": {
+            "AISCALP_SETTINGS": {
                 "sessions": {
                     "enabled": True,
                     "definitions": {
                         "ASIAN": {"start_utc": 0, "end_utc": 6},
                     },
                     "overlap_bonus": 1,
-                    "dead_zone_hours": [22, 23],
-                    "dead_zone_penalty": -2,
                 }
             }
         }

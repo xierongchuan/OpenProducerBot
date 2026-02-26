@@ -15,7 +15,7 @@ JOURNAL_FILE = os.path.join(DATA_DIR, "decision_journal.json")
 
 # Конфигурация из bot_config.json
 JOURNAL_ENABLED = DECISION_JOURNAL.get("enabled", True)
-ENTRY_LIMITS = DECISION_JOURNAL.get("max_entries", {"SCALP": 5, "INTRADAY": 10, "SWING": 10})
+ENTRY_LIMITS = DECISION_JOURNAL.get("max_entries", {"SCALP": 5, "AISCALP": 10, "SWING": 10})
 
 
 class DecisionJournal:
@@ -95,7 +95,7 @@ class DecisionJournal:
             "sl": prediction.get("stop_loss"),
             "tp": prediction.get("take_profit"),
             "pnl": pnl_str,
-            "reason": self._shorten_reason(prediction.get("reason", "")),
+            "reason": prediction.get("reason", "") or "—",
         }
 
         self.data[symbol]["entries"].append(entry)
@@ -185,8 +185,9 @@ class DecisionJournal:
         if entries:
             lines.append("Time|Action|Conf|Price|PnL|Reason")
             for e in entries:
+                short_reason = self._shorten_reason(e.get("reason", ""))
                 lines.append(
-                    f"{e['time']}|{e['action']}|{e['confidence']}|{e['price']}|{e['pnl']}|{e['reason']}"
+                    f"{e['time']}|{e['action']}|{e['confidence']}|{e['price']}|{e['pnl']}|{short_reason}"
                 )
 
         decision_history = "\n".join(lines) if lines else "Нет предыдущих решений."

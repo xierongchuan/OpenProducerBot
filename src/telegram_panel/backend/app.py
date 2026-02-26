@@ -7,7 +7,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .routes import dashboard, trades, charts, logs, config_routes, journal
+from .routes import dashboard, trades, charts, logs, config_routes, journal, chart_data
 from .services.file_watcher import FileWatcher
 from .ws import manager
 
@@ -47,6 +47,7 @@ app.include_router(charts.router)
 app.include_router(logs.router)
 app.include_router(config_routes.router)
 app.include_router(journal.router)
+app.include_router(chart_data.router)
 
 
 @app.get("/api/health")

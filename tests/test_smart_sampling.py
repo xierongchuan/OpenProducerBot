@@ -59,22 +59,22 @@ class TestSmartSamplingAggregation(unittest.TestCase):
 
         self.assertLessEqual(total, max_ai_candles, "Total candles should fit within AI limit")
 
-    def test_step_calculation_intraday(self):
-        """Test step auto-calculation for INTRADAY style (1D, 288 candles at 5m)"""
-        fetched_candles = 288  # 1 day of 5m candles (1440 min / 5 min)
-        max_ai_candles = 50
-        recent_candles = 30
+    def test_step_calculation_aiscalp(self):
+        """Test step auto-calculation for AISCALP style (1D, 1440 candles at 1m)"""
+        fetched_candles = 1440  # 1 day of 1m candles (1440 min / 1 min)
+        max_ai_candles = 100
+        recent_candles = 40
 
-        history_candles = fetched_candles - recent_candles  # 258
-        ai_history_budget = max_ai_candles - recent_candles  # 20
+        history_candles = fetched_candles - recent_candles  # 1400
+        ai_history_budget = max_ai_candles - recent_candles  # 60
 
         optimal_step = max(1, math.ceil(history_candles / ai_history_budget))
 
-        # 258 / 20 = 12.9 -> ceil = 13
-        self.assertEqual(optimal_step, 13, "Step should be 13 for INTRADAY 1D")
+        # 1400 / 60 = 23.33 -> ceil = 24
+        self.assertEqual(optimal_step, 24, "Step should be 24 for AISCALP 1D")
 
-        aggregated_history = history_candles // optimal_step  # 258 // 13 = 19
-        total = aggregated_history + recent_candles  # 19 + 30 = 49
+        aggregated_history = history_candles // optimal_step  # 1400 // 24 = 58
+        total = aggregated_history + recent_candles  # 58 + 40 = 98
 
         self.assertLessEqual(total, max_ai_candles)
 

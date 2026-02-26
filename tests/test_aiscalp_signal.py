@@ -1,11 +1,11 @@
-"""Tests for src.core.intraday_signal — INTRADAY signal generator."""
+"""Tests for src.core.aiscalp_signal — AISCALP signal generator."""
 
 import pytest
 from unittest.mock import patch
 
 
-INTRADAY_CONFIG = {
-    "INTRADAY_SETTINGS": {
+AISCALP_CONFIG = {
+    "AISCALP_SETTINGS": {
         "signal_scoring": {
             "weights": {
                 "htf_trend": 3, "ema_alignment": 2, "rsi_zone": 2,
@@ -29,8 +29,6 @@ INTRADAY_CONFIG = {
                 "US": {"start_utc": 13, "end_utc": 21},
             },
             "overlap_bonus": 1,
-            "dead_zone_hours": [21, 22, 23],
-            "dead_zone_penalty": -2,
         },
         "multi_timeframe": {"enabled": True},
         "pre_filter": {
@@ -38,7 +36,6 @@ INTRADAY_CONFIG = {
             "skip_dead_market_volume": 0.25,
             "skip_rsi_neutral_zone": [46, 54],
             "skip_no_htf_trend": True,
-            "skip_dead_session": True,
         },
         "ai_filter": {
             "enabled": True,
@@ -58,9 +55,9 @@ INTRADAY_CONFIG = {
 
 @pytest.fixture(autouse=True)
 def mock_config():
-    with patch("src.core.intraday_signal.BOT_CONFIG", INTRADAY_CONFIG):
+    with patch("src.core.aiscalp_signal.BOT_CONFIG", AISCALP_CONFIG):
         # Reset singleton
-        import src.core.intraday_signal as mod
+        import src.core.aiscalp_signal as mod
         mod._generator = None
         yield
 
@@ -111,7 +108,6 @@ def _session_data(**overrides):
         "current_hour_utc": 14,
         "active_sessions": ["EUROPEAN", "US"],
         "is_overlap": True,
-        "is_dead_zone": False,
         "session_quality": "HIGH",
         "quality_score_adj": 1,
     }
@@ -135,30 +131,31 @@ class TestPreFilter:
     """Test pre-filter logic."""
 
     def test_dead_market_volume(self):
-        from src.core.intraday_signal import intraday_pre_filter
+        from src.core.aiscalp_signal import aiscalp_pre_filter
         analysis = _base_analysis(volume_ratio=0.1)
-        proceed, reason = intraday_pre_filter(analysis, _htf_data(), _session_data())
+        proceed, reason = aiscalp_pre_filter(analysis, _htf_data(), _session_data())
         assert proceed is False
         assert "Dead market" in reason
 
     def test_rsi_neutral_no_htf(self):
-        from src.core.intraday_signal import intraday_pre_filter
+        from src.core.aiscalp_signal import aiscalp_pre_filter
         analysis = _base_analysis(rsi=50)
         htf = _htf_data(htf_trend="NEUTRAL")
-        proceed, reason = intraday_pre_filter(analysis, htf, _session_data())
+        proceed, reason = aiscalp_pre_filter(analysis, htf, _session_data())
         assert proceed is False
         assert "RSI neutral" in reason
 
-    def test_dead_session(self):
-        from src.core.intraday_signal import intraday_pre_filter
-        session = _session_data(session_quality="DEAD", is_dead_zone=True)
-        proceed, reason = intraday_pre_filter(_base_analysis(), _htf_data(), session)
-        assert proceed is False
-        assert "Dead trading session" in reason
+    def test_off_session_passes(self):
+        """Off-session (LOW quality) should NOT block pre-filter — scoring handles it."""
+        from src.core.aiscalp_signal import aiscalp_pre_filter
+        session = _session_data(session_quality="LOW", quality_score_adj=-1,
+                                is_overlap=False, active_sessions=[])
+        proceed, reason = aiscalp_pre_filter(_base_analysis(), _htf_data(), session)
+        assert proceed is True
 
     def test_passes_good_conditions(self):
-        from src.core.intraday_signal import intraday_pre_filter
-        proceed, reason = intraday_pre_filter(_base_analysis(), _htf_data(), _session_data())
+        from src.core.aiscalp_signal import aiscalp_pre_filter
+        proceed, reason = aiscalp_pre_filter(_base_analysis(), _htf_data(), _session_data())
         assert proceed is True
         assert reason == "Passed"
 
@@ -168,13 +165,13 @@ class TestGenerateSignal:
 
     def test_strong_buy_signal(self):
         """All indicators align for BUY — should produce a signal."""
-        from src.core.intraday_signal import generate_intraday_signal
+        from src.core.aiscalp_signal import generate_aiscalp_signal
         analysis = _base_analysis(rsi=42, ema9=100.5, ema21=99.8, volume_ratio=1.5)
         htf = _htf_data(htf_trend="BULLISH")
         session = _session_data(quality_score_adj=1)
         regime = _regime(recommended_min_score=4)
 
-        result = generate_intraday_signal(analysis, htf, session, regime)
+        result = generate_aiscalp_signal(analysis, htf, session, regime)
 
         assert result["signal"] == "BUY"
         assert result["score"] >= 5
@@ -183,7 +180,7 @@ class TestGenerateSignal:
 
     def test_strong_sell_signal(self):
         """All indicators align for SELL."""
-        from src.core.intraday_signal import generate_intraday_signal
+        from src.core.aiscalp_signal import generate_aiscalp_signal
         analysis = _base_analysis(
             rsi=62, ema9=99.0, ema21=100.0, volume_ratio=1.5,
             last_5_direction="DOWN",
@@ -194,94 +191,93 @@ class TestGenerateSignal:
         session = _session_data(quality_score_adj=1)
         regime = _regime(recommended_min_score=4)
 
-        result = generate_intraday_signal(analysis, htf, session, regime)
+        result = generate_aiscalp_signal(analysis, htf, session, regime)
 
         assert result["signal"] == "SELL"
         assert result["score"] >= 5
 
     def test_hold_low_volume(self):
         """Low volume should produce HOLD."""
-        from src.core.intraday_signal import generate_intraday_signal
+        from src.core.aiscalp_signal import generate_aiscalp_signal
         analysis = _base_analysis(volume_ratio=0.2)
 
-        result = generate_intraday_signal(analysis, _htf_data(), _session_data())
+        result = generate_aiscalp_signal(analysis, _htf_data(), _session_data())
 
         assert result["signal"] == "HOLD"
         assert result["quality"] == 0.0
 
     def test_hold_low_atr(self):
         """Low ATR should produce HOLD."""
-        from src.core.intraday_signal import generate_intraday_signal
+        from src.core.aiscalp_signal import generate_aiscalp_signal
         analysis = _base_analysis(atr_ratio=0.1)
 
-        result = generate_intraday_signal(analysis, _htf_data(), _session_data())
+        result = generate_aiscalp_signal(analysis, _htf_data(), _session_data())
 
         assert result["signal"] == "HOLD"
 
     def test_no_tier1_produces_hold(self):
         """Without any Tier1 direction (neutral HTF + flat EMA), should HOLD even with good Tier2."""
-        from src.core.intraday_signal import generate_intraday_signal
+        from src.core.aiscalp_signal import generate_aiscalp_signal
         analysis = _base_analysis(
             ema9=100.0, ema21=100.0,  # flat EMA
             rsi=42, volume_ratio=1.0,
         )
         htf = _htf_data(htf_trend="NEUTRAL")  # no HTF direction
 
-        result = generate_intraday_signal(analysis, htf, _session_data())
+        result = generate_aiscalp_signal(analysis, htf, _session_data())
 
         # Should be HOLD because no Tier1 is satisfied
         assert result["signal"] == "HOLD"
 
     def test_htf_ltf_confluence_bonus(self):
         """HTF BULLISH + EMA LONG should get confluence bonus."""
-        from src.core.intraday_signal import generate_intraday_signal
+        from src.core.aiscalp_signal import generate_aiscalp_signal
         analysis = _base_analysis(ema9=101.0, ema21=99.5, rsi=42)
         htf = _htf_data(htf_trend="BULLISH")
         regime = _regime(recommended_min_score=4)
 
-        result = generate_intraday_signal(analysis, htf, _session_data(), regime)
+        result = generate_aiscalp_signal(analysis, htf, _session_data(), regime)
 
         assert result["signal"] == "BUY"
         # Score should include HTF(3) + EMA(2) + HTF+LTF confluence(2) = 7 minimum
         assert result["score"] >= 7
 
-    def test_dead_zone_penalty(self):
-        """Dead zone should penalize scores."""
-        from src.core.intraday_signal import generate_intraday_signal
+    def test_off_session_penalty(self):
+        """Off-session (LOW) should penalize scores vs normal session."""
+        from src.core.aiscalp_signal import generate_aiscalp_signal
         analysis = _base_analysis()
-        session = _session_data(
-            session_quality="DEAD",
-            quality_score_adj=-2,
-            is_dead_zone=True,
+        session_low = _session_data(
+            session_quality="LOW",
+            quality_score_adj=-1,
             is_overlap=False,
             active_sessions=[],
         )
 
-        result_dead = generate_intraday_signal(analysis, _htf_data(), session, _regime())
+        result_low = generate_aiscalp_signal(analysis, _htf_data(), session_low, _regime())
 
         # Compare with normal session
         session_normal = _session_data(quality_score_adj=0, is_overlap=False, active_sessions=["US"])
-        result_normal = generate_intraday_signal(analysis, _htf_data(), session_normal, _regime())
+        result_normal = generate_aiscalp_signal(analysis, _htf_data(), session_normal, _regime())
 
-        # Dead zone score should be lower than normal
-        assert result_dead["score"] < result_normal["score"]
+        # Off-session score should be lower than normal
+        assert result_low["score"] < result_normal["score"]
 
     def test_max_score_is_13(self):
         """Max base score = 13."""
-        from src.core.intraday_signal import generate_intraday_signal
+        from src.core.aiscalp_signal import generate_aiscalp_signal
         analysis = _base_analysis()
 
-        result = generate_intraday_signal(analysis, _htf_data(), _session_data())
+        result = generate_aiscalp_signal(analysis, _htf_data(), _session_data())
 
         assert result["max_score"] == 13
 
     def test_regime_adaptive_min_score(self):
         """Regime should override default min_score."""
-        from src.core.intraday_signal import generate_intraday_signal
+        from src.core.aiscalp_signal import generate_aiscalp_signal
         analysis = _base_analysis()
         regime = _regime(recommended_min_score=8)
 
-        result = generate_intraday_signal(analysis, _htf_data(), _session_data(), regime)
+        result = generate_aiscalp_signal(analysis, _htf_data(), _session_data(), regime)
 
         # With min_score=8, most signals won't fire
         details = result.get("details", {})
@@ -289,8 +285,8 @@ class TestGenerateSignal:
 
     def test_result_structure(self):
         """Signal result has all expected keys."""
-        from src.core.intraday_signal import generate_intraday_signal
-        result = generate_intraday_signal(_base_analysis(), _htf_data(), _session_data())
+        from src.core.aiscalp_signal import generate_aiscalp_signal
+        result = generate_aiscalp_signal(_base_analysis(), _htf_data(), _session_data())
 
         expected_keys = {
             "signal", "score", "max_score", "quality", "confidence",
@@ -303,58 +299,58 @@ class TestShouldClose:
     """Test close position logic."""
 
     def test_rsi_extreme_long(self):
-        from src.core.intraday_signal import intraday_should_close
+        from src.core.aiscalp_signal import aiscalp_should_close
         analysis = _base_analysis(rsi=85, current_price=105.0)
         position = {"type": "BUY", "entry": "100.0"}
 
-        result = intraday_should_close(analysis, position)
+        result = aiscalp_should_close(analysis, position)
 
         assert result["should_close"] is True
         assert "RSI" in result["reason"]
 
     def test_htf_reversal_against_long(self):
-        from src.core.intraday_signal import intraday_should_close
+        from src.core.aiscalp_signal import aiscalp_should_close
         analysis = _base_analysis(current_price=99.0)
         position = {"type": "BUY", "entry": "100.0"}
         htf = _htf_data(htf_trend="BEARISH")
 
-        result = intraday_should_close(analysis, position, htf)
+        result = aiscalp_should_close(analysis, position, htf)
 
         assert result["should_close"] is True
         assert "HTF" in result["reason"]
 
     def test_no_close_when_profitable(self):
-        from src.core.intraday_signal import intraday_should_close
+        from src.core.aiscalp_signal import aiscalp_should_close
         analysis = _base_analysis(rsi=55, current_price=101.0, macd_hist=0.1)
         position = {"type": "BUY", "entry": "100.0"}
         htf = _htf_data(htf_trend="BULLISH")
 
-        result = intraday_should_close(analysis, position, htf)
+        result = aiscalp_should_close(analysis, position, htf)
 
         assert result["should_close"] is False
 
     def test_macd_reversal_with_loss(self):
-        from src.core.intraday_signal import intraday_should_close
+        from src.core.aiscalp_signal import aiscalp_should_close
         analysis = _base_analysis(current_price=98.0, macd_hist=-0.1)
         position = {"type": "BUY", "entry": "100.0"}
 
-        result = intraday_should_close(analysis, position)
+        result = aiscalp_should_close(analysis, position)
 
         assert result["should_close"] is True
         assert "MACD" in result["reason"]
 
     def test_no_position(self):
-        from src.core.intraday_signal import intraday_should_close
-        result = intraday_should_close(_base_analysis(), None)
+        from src.core.aiscalp_signal import aiscalp_should_close
+        result = aiscalp_should_close(_base_analysis(), None)
         assert result["should_close"] is False
 
     def test_trailing_profit_lock(self):
         """Lock profit when >= 3% and momentum fading."""
-        from src.core.intraday_signal import intraday_should_close
+        from src.core.aiscalp_signal import aiscalp_should_close
         analysis = _base_analysis(current_price=104.0, rsi=68, macd_hist=-0.01)
         position = {"type": "BUY", "entry": "100.0"}
 
-        result = intraday_should_close(analysis, position)
+        result = aiscalp_should_close(analysis, position)
 
         assert result["should_close"] is True
         assert "Trail" in result["reason"]

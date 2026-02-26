@@ -1,4 +1,4 @@
-import type { DashboardData, Trade, TradeStats, ChartFile, JournalEntry } from './types';
+import type { DashboardData, Trade, TradeStats, ChartFile, ChartData, JournalEntry, JournalStats } from './types';
 
 const BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
@@ -47,6 +47,12 @@ export function getChartsList() {
   return fetchAPI<ChartFile[]>('/api/charts/list');
 }
 
+export function getChartData(symbol: string, range: string = '1D') {
+  return fetchAPI<ChartData>(
+    `/api/chart-data/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}`
+  );
+}
+
 export function getChartUrl(filename: string) {
   const auth = encodeURIComponent(getInitData());
   return `${BASE_URL}/api/charts/${encodeURIComponent(filename)}?auth=${auth}`;
@@ -85,6 +91,10 @@ export function getConfigMeta() {
 export function getJournal(symbol?: string) {
   const path = symbol ? `/api/journal/${encodeURIComponent(symbol)}` : '/api/journal';
   return fetchAPI<JournalEntry[]>(path);
+}
+
+export function getJournalStats() {
+  return fetchAPI<JournalStats>('/api/journal/stats');
 }
 
 export function syncPositions() {

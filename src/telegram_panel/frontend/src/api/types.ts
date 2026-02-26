@@ -56,9 +56,61 @@ export interface JournalEntry {
   symbol?: string;
 }
 
+export interface JournalSymbolStats {
+  entry_count: number;
+  action_distribution: { buy: number; sell: number; hold: number; close: number };
+  avg_confidence: number;
+  last_action_time: string | null;
+  has_active_plan: boolean;
+  in_cooldown: boolean;
+  cooldown_remaining_hours: number;
+  position_age_hours: number | null;
+  last_close_time: string | null;
+}
+
+export interface JournalStats {
+  total_entries: number;
+  active_plans_count: number;
+  avg_confidence: number;
+  symbols: Record<string, JournalSymbolStats>;
+}
+
 export interface WSEvent {
   type: string;
   data: Record<string, unknown>;
+}
+
+export interface CandleData {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface SeriesPoint {
+  time: number;
+  value: number;
+}
+
+export interface PositionData {
+  side: 'LONG' | 'SHORT';
+  entry_price: number;
+  sl: number;
+  tp: number;
+  pnl: number;
+  leverage: number;
+}
+
+export interface ChartData {
+  symbol: string;
+  range: string;
+  interval: string;
+  candles: CandleData[];
+  indicators: Record<string, SeriesPoint[]>;
+  position: PositionData | null;
+  available_ranges: string[];
 }
 
 export type TabId = 'dashboard' | 'charts' | 'trades' | 'logs' | 'settings' | 'journal';

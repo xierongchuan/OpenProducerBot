@@ -1,4 +1,5 @@
 from datetime import datetime
+import fcntl
 import json
 from pathlib import Path
 
@@ -101,10 +102,24 @@ def read_json(path: Path) -> dict | list | None:
 
 
 def write_json(path: Path, data: dict | list) -> bool:
-    """Safely write data to a JSON file."""
+    """Safely write data to a JSON file with file locking."""
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        if path.exists():
+            with open(path, "r+", encoding="utf-8") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                try:
+                    f.seek(0)
+                    f.truncate()
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                finally:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                try:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                finally:
+                    fcntl.flock(f, fcntl.LOCK_UN)
         return True
     except Exception:
         return False
@@ -190,6 +205,7 @@ async def sync_positions(_user: dict = Depends(get_current_user)) -> dict:
 
     # Find stale symbols (in file but not on exchange)
     removed = []
+    write_errors = False
     for symbol in list(active.keys()):
         symbol_positions = real_positions.get(symbol, [])
         if not symbol_positions:
@@ -203,15 +219,17 @@ async def sync_positions(_user: dict = Depends(get_current_user)) -> dict:
             if not isinstance(history, list):
                 history = []
             history.append(trade)
-            write_json(history_path, history)
+            if not write_json(history_path, history):
+                write_errors = True
 
             removed.append(symbol)
 
     if removed:
-        write_json(active_path, active)
+        if not write_json(active_path, active):
+            write_errors = True
 
     return {
-        "status": "ok",
+        "status": "ok" if not write_errors else "partial",
         "removed": len(removed),
         "removed_symbols": removed,
         "remaining": len(active),
@@ -263,15 +281,21 @@ async def close_position_by_symbol(
         trade["close_time"] = datetime.now().isoformat()
         trade["reason"] = "PANEL_CLOSE"
         del active[symbol]
-        write_json(active_path, active)
+        active_written = write_json(active_path, active)
 
         history = read_json(history_path)
         if not isinstance(history, list):
             history = []
         history.append(trade)
-        write_json(history_path, history)
+        history_written = write_json(history_path, history)
 
-        return {"status": "success", "symbol": symbol, "message": "Position closed"}
+        if active_written and history_written:
+            return {"status": "success", "symbol": symbol, "message": "Position closed"}
+        return {
+            "status": "partial_success",
+            "symbol": symbol,
+            "message": "Position closed on exchange, but local file update failed. Run Sync to fix.",
+        }
     except HTTPException:
         raise
     except Exception as e:

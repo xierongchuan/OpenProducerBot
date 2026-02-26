@@ -45,8 +45,8 @@ run.py → src/main.py (spawns processes)
   ├── Worker per symbol (src/core/process_worker.py) — infinite loop:
   │   HYBRID: Collector → Analyzer → TradeTracker → DecisionJournal → SignalGenerator →
   │           RegimeDetector → RiskManager → [AI Veto conditional] → Executor → Monitor → sleep
-  │   INTRADAY: Collector → Analyzer → HTF Analysis → Session → TradeTracker →
-  │             DecisionJournal → SignalGenerator → RegimeDetector → RiskManager → AI → Executor → Monitor → sleep
+  │   AISCALP: Collector → Analyzer → HTF Analysis → Session → TradeTracker →
+  │            DecisionJournal → SignalGenerator → RegimeDetector → RiskManager → AI → Executor → Monitor → sleep
   │   SCALP: Delegates to ScalpEngine (dual-loop: fast 1.5s + slow 45s)
   │   GRID: Delegates to GridWorker (limit order grid)
   │   SWING: Collector → Analyzer → TradeTracker → DecisionJournal → AI → Executor → Monitor → sleep
@@ -61,7 +61,7 @@ run.py → src/main.py (spawns processes)
  2. analyzer.analyze_symbol_with_position() — indicators, trends, market context, signal scoring
  3. trade_tracker.sync_position()       — detect new/closed/updated positions
  4. decision_journal.get_context()      — previous AI decisions for prompt context
- 5. signal_generator.generate()         — deterministic signal scoring (HYBRID/INTRADAY)
+ 5. signal_generator.generate()         — deterministic signal scoring (HYBRID/AISCALP)
  6. regime.detect()                     — classify market regime (TRENDING/RANGING/VOLATILE/TRANSITIONAL)
  7. risk_manager.calculate_dynamic_sl_tp() — ATR+S/R based SL/TP with regime adjustments
  8. risk_manager.calculate_position_size() — dynamic sizing based on quality/regime/streak
@@ -69,15 +69,15 @@ run.py → src/main.py (spawns processes)
 10. executor.main()                     — calculate size, place orders with SL/TP
 11. monitor.main()                      — log open positions, PnL tracking
 12. performance.check_calibration()     — periodic calibration suggestions (every 50 cycles)
-13. sleep(loop_interval)                — style-dependent (1.5s SCALP, 60s INTRADAY, 4h SWING)
+13. sleep(loop_interval)                — style-dependent (1.5s SCALP, 60s AISCALP, 4h SWING)
 ```
 
 ### Pipeline modules (src/core/)
 - **process_worker.py** — per-symbol infinite loop orchestrator. Hot-reload config every 30s. Dynamic sleep (position_check_interval vs base_interval with ±20% jitter). Disabled symbols check, funding rate logging
-- **collector.py** — fetches OHLCV candles from BingX API, optionally news. For INTRADAY: also fetches HTF (1H) candles
-- **analyzer.py** — calculates indicators (EMA, RSI, MACD, ATR, BB, SEB, S/R levels), detects market context (trend, volume), smart sampling for AI context. `analyze_htf()` for multi-timeframe analysis (INTRADAY)
+- **collector.py** — fetches OHLCV candles from BingX API, optionally news. For AISCALP: also fetches HTF (1H) candles
+- **analyzer.py** — calculates indicators (EMA, RSI, MACD, ATR, BB, SEB, S/R levels), detects market context (trend, volume), smart sampling for AI context. `analyze_htf()` for multi-timeframe analysis (AISCALP)
 - **signal_generator.py** — deterministic scoring system for HYBRID mode (max base score 10, regime-adaptive min: default 5). Weights: EMA(2), RSI(2), S/R(2), MACD(1), Momentum(1), BB(1), Volume(1). Tiered system (Tier 1: direction, Tier 2: confirmation), interaction bonuses/penalties, conflict friction. `should_close_position()` for exit signals
-- **intraday_signal.py** — INTRADAY multi-timeframe signal generator. HTF trend weight (3), session awareness, counter-HTF penalty (-3). Uses `INTRADAY_SETTINGS` config
+- **aiscalp_signal.py** — AISCALP multi-timeframe signal generator. HTF trend weight (3), session awareness, counter-HTF penalty (-3). Uses `AISCALP_SETTINGS` config
 - **scalp_engine.py** — dedicated SCALP strategy engine with dual-loop (fast 1.5s signal detection + slow 45s regime/veto). Trailing stops, breakeven, time-based exits
 - **scalp_signal.py** — SCALP signal generator with OB imbalance, VWAP, momentum scoring
 - **scalp_performance.py** — SCALP-specific performance tracking, streak management, rate limiting
@@ -104,7 +104,7 @@ run.py → src/main.py (spawns processes)
 ### Prompt system (src/prompts/)
 - **builder.py** — `PromptBuilder.build(style, ctx)` assembles modular prompt from blocks + strategy section. Cached block loading. Separator: `\n\n---\n\n`
 - **blocks/** — text templates: `role.txt`, `principles.txt`, `context_table.txt`, `decision_history.txt`, `market_analysis.txt`, `response_format.txt`, `risk_table.txt`, `position_management.txt`, `special_situations.txt`, `candle_history.txt`
-- **strategies/** — `BaseStrategy` ABC with implementations: `ScalpStrategy`, `ScalpVetoStrategy`, `ScalpRegimeStrategy`, `IntradayStrategy`, `SwingStrategy`, `SwingVetoStrategy`, `GridStrategy`, `HybridStrategy`, `HybridVetoStrategy`. Registry in `__init__.py` STRATEGIES dict
+- **strategies/** — `BaseStrategy` ABC with implementations: `ScalpStrategy`, `ScalpVetoStrategy`, `ScalpRegimeStrategy`, `AiScalpStrategy`, `SwingStrategy`, `SwingVetoStrategy`, `GridStrategy`, `HybridStrategy`, `HybridVetoStrategy`. Registry in `__init__.py` STRATEGIES dict
 
 ### Telegram Panel (src/telegram_panel/)
 Management UI — does NOT affect trading bot functionality. Runs in a separate container.
@@ -134,7 +134,7 @@ Management UI — does NOT affect trading bot functionality. Runs in a separate 
 | Style | Timeframe | Loop | Leverage | ATR SL/TP | Notes |
 |-------|-----------|------|----------|-----------|-------|
 | SCALP | 1m | 1.5s | 15x | 1.0/3.0 | Dual-loop engine (fast 1.5s + slow 45s), trailing stops, time exits |
-| INTRADAY | 5m | 60s | 10x | 2.0/3.0 | Multi-TF (5m+1H), session awareness, HTF trend alignment |
+| AISCALP | 1m | 60s | 10x | 5.0/7.0 | Multi-TF (1m+1H), session awareness, HTF trend alignment |
 | SWING | 1h | 4h | 5x | 3.0/6.0 | Multi-day, 24h min hold, 6h cooldown, milestone-based exits |
 | GRID | 1m | 5s | 5x | — | Limit order grid, inventory management, ADX-based pausing |
 | HYBRID | 5m | 60s | 10x | 1.5/3.0 | Deterministic signals + AI confirmation (default) |
@@ -155,14 +155,14 @@ Management UI — does NOT affect trading bot functionality. Runs in a separate 
 - `EXCHANGE_SYMBOLS` — active trading pairs per exchange
 - `DISABLED_SYMBOLS` — symbols blocked from new position entry
 - `EXCHANGE_FEES` — per-exchange maker/taker fee percentages
-- `STRATEGY_STYLE` — active style (SCALP/INTRADAY/SWING/GRID/HYBRID)
+- `STRATEGY_STYLE` — active style (SCALP/AISCALP/SWING/GRID/HYBRID)
 - `POSITION_SIZE_PERCENT` — % of balance per trade (default 10)
 - `MIN_RISK_REWARD_RATIO` — R/R validation threshold (default 1.2)
 - `MIN_CONFIDENCE_THRESHOLD` — minimum AI confidence to execute (default 0.55)
 - `AI_SETTINGS` — model, temperature (0.3), max_tokens (4096), retry count (3), reasoning config, provider_routing, fallback_models
 - `STYLE_PRESETS` — per-style overrides (timeframe, loop_interval, leverage, ATR multipliers, position_check_interval, min_hold_hours, cooldown_after_close_hours)
 - `HYBRID_SETTINGS` — signal scoring rules, weights, interaction bonuses, AI filter config (auto_approve_quality, invoke_on_borderline)
-- `INTRADAY_SETTINGS` — signal scoring (HTF trend weight 3), session config (ASIAN/EUROPEAN/US, dead zones), multi-timeframe config, pre-filter rules, AI filter, interaction rules (counter_htf_trend_penalty -3)
+- `AISCALP_SETTINGS` — signal scoring (HTF trend weight 3), session config (ASIAN/EUROPEAN/US, dead zones), multi-timeframe config, pre-filter rules, AI filter, interaction rules (counter_htf_trend_penalty -3)
 - `SCALP_SETTINGS` — signal rules (EMA 5/13, RSI 7, MACD 6/13/5, OB imbalance), SL/TP (trailing mode), breakeven, time exits, risk limits (max trades/hour, daily loss limit), dual loops, regime overrides, AI integration (regime + veto)
 - `REGIME_SETTINGS` — market regime detection params, per-regime min_score/SL/TP/sizing factors
 - `PERFORMANCE_TRACKING` — performance analysis (enabled, min_trades, win_rate_floor)
@@ -187,7 +187,7 @@ Management UI — does NOT affect trading bot functionality. Runs in a separate 
 | `trade_history.json` | `[{symbol, side, entry_price, close_time, last_pnl, net_pnl, ...}]` | Closed trades |
 | `decision_journal.json` | `{symbol: {entries: [...], trade_plan: {...}, last_close_time: str}}` | AI decision history |
 | `prices/{SYMBOL}.json` | Candle data arrays | Fetched OHLCV |
-| `prices/{SYMBOL}_htf.json` | Candle data arrays | Higher-timeframe candles (INTRADAY) |
+| `prices/{SYMBOL}_htf.json` | Candle data arrays | Higher-timeframe candles (AISCALP) |
 | `steps.log` | Text log | System events |
 | `trades.log` | Text log | Trade executions |
 | `logs/{SYMBOL}.log` | Text log | Per-symbol logs |
@@ -209,7 +209,7 @@ Dev/test: `pytest` (installed in container at test time)
 
 ### Design patterns used
 - **Factory** — `exchange_factory.py`
-- **Strategy** — `BaseStrategy` + 9 implementations (Scalp/ScalpVeto/ScalpRegime/Intraday/Swing/SwingVeto/Grid/Hybrid/HybridVeto)
+- **Strategy** — `BaseStrategy` + 9 implementations (Scalp/ScalpVeto/ScalpRegime/AiScalp/Swing/SwingVeto/Grid/Hybrid/HybridVeto)
 - **Singleton** — `MarketRegimeDetector`, `PerformanceTracker`, `WebSocketDataProvider` (one instance per process)
 - **Supervisor-Worker** — main process spawns per-symbol worker processes
 - **Template Method** — `PromptBuilder` assembles blocks from strategy templates

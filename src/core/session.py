@@ -1,8 +1,8 @@
 """
 Trading Session Awareness Module.
 
-Determines current trading session (Asian/European/US),
-overlap periods, and dead zones for INTRADAY strategy.
+Determines current trading session (Asian/European/US)
+and overlap periods for AISCALP strategy.
 """
 
 from datetime import datetime, timezone
@@ -26,11 +26,10 @@ def get_session_info() -> dict:
             - current_hour_utc: int
             - active_sessions: list of session names
             - is_overlap: bool (2+ sessions active)
-            - is_dead_zone: bool
-            - session_quality: str (HIGH/MEDIUM/LOW/DEAD)
+            - session_quality: str (HIGH/MEDIUM/LOW)
             - quality_score_adj: int (adjustment for signal scoring)
     """
-    settings = BOT_CONFIG.get("INTRADAY_SETTINGS", {}).get("sessions", {})
+    settings = BOT_CONFIG.get("AISCALP_SETTINGS", {}).get("sessions", {})
 
     if not settings.get("enabled", True):
         return _default_session_info()
@@ -52,18 +51,10 @@ def get_session_info() -> dict:
 
     is_overlap = len(active_sessions) >= 2
 
-    # Dead zone check
-    dead_zone_hours = settings.get("dead_zone_hours", [21, 22, 23])
-    is_dead_zone = current_hour in dead_zone_hours
-
     # Quality classification
-    dead_zone_penalty = settings.get("dead_zone_penalty", -2)
     overlap_bonus = settings.get("overlap_bonus", 1)
 
-    if is_dead_zone:
-        session_quality = "DEAD"
-        quality_score_adj = dead_zone_penalty
-    elif is_overlap:
+    if is_overlap:
         session_quality = "HIGH"
         quality_score_adj = overlap_bonus
     elif len(active_sessions) == 1:
@@ -77,7 +68,6 @@ def get_session_info() -> dict:
         "current_hour_utc": current_hour,
         "active_sessions": active_sessions,
         "is_overlap": is_overlap,
-        "is_dead_zone": is_dead_zone,
         "session_quality": session_quality,
         "quality_score_adj": quality_score_adj,
     }
@@ -103,7 +93,6 @@ def _default_session_info() -> dict:
         "current_hour_utc": _get_current_utc_hour(),
         "active_sessions": [],
         "is_overlap": False,
-        "is_dead_zone": False,
         "session_quality": "MEDIUM",
         "quality_score_adj": 0,
     }

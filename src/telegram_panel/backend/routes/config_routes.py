@@ -39,7 +39,7 @@ VALIDATION_RULES = {
     "MIN_TRADE_AMOUNT_USDT": {"type": (int, float), "min": 1, "max": 100000},
     "TAKE_PROFIT_PERCENT": {"type": (int, float), "min": 0.1, "max": 100},
     "STOP_LOSS_PERCENT": {"type": (int, float), "min": 0.1, "max": 100},
-    "STRATEGY_STYLE": {"type": str, "values": ["SCALP", "INTRADAY", "SWING", "GRID", "HYBRID"]},
+    "STRATEGY_STYLE": {"type": str, "values": ["SCALP", "AISCALP", "SWING", "GRID", "HYBRID"]},
 }
 
 

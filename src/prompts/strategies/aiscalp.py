@@ -1,10 +1,10 @@
 from src.prompts.strategies.base import BaseStrategy
 
 
-class IntradayStrategy(BaseStrategy):
+class AiScalpStrategy(BaseStrategy):
 
     def get_role(self) -> str:
-        return "Ты — Intraday Trader (внутридневной трейдер на 5m TF с мультитаймфреймовым анализом)."
+        return "Ты — AI Scalping Trader (внутридневной трейдер на 1m TF с мультитаймфреймовым анализом)."
 
     def get_objective(self) -> str:
         return "Ловить дневные движения в направлении HTF тренда. Держать позицию 4-12 часов. Шире стопы чем в скальпинге."
@@ -82,14 +82,13 @@ class IntradayStrategy(BaseStrategy):
             hour = session_data.get("current_hour_utc", 0)
             sessions = "+".join(session_data.get("active_sessions", [])) or "NONE"
             quality = session_data.get("session_quality", "MEDIUM")
-            is_dead = session_data.get("is_dead_zone", False)
             session_block = f"""
 ---
 
 ### TRADING SESSION
-| Time UTC | Active Sessions | Quality | Dead Zone |
-|----------|----------------|---------|-----------|
-| {hour}:00 | {sessions} | {quality} | {"YES" if is_dead else "NO"} |
+| Time UTC | Active Sessions | Quality |
+|----------|----------------|---------|
+| {hour}:00 | {sessions} | {quality} |
 """
 
         # === SIGNAL SCORE BLOCK ===
@@ -163,20 +162,20 @@ You may override if your analysis shows the position is still valid.
 Factor this into your decision — poor R/R means higher risk.
 """
 
-        return f"""## 3. STRATEGY: INTRADAY MOMENTUM (5m TF + 1H HTF)
-*Multi-timeframe intraday trading. Trade in HTF direction, confirm on 5m.*
+        return f"""## 3. STRATEGY: AI SCALPING (1m TF + 1H HTF)
+*Multi-timeframe AI scalping. Trade in HTF direction, confirm on 1m.*
 
 **YOU are the final decision-maker.** The scoring system provides signals as recommendations — confirm, reject, or override based on your own analysis.
 {htf_block}{session_block}{signal_block}{close_block}{risk_block}
 ---
 
-### INTRADAY MINDSET
+### AI SCALP MINDSET
 
 **Key principles:**
 - Trade ONLY in HTF (1H) trend direction
-- Use 5m for entry timing and confirmation
-- SL = 2.0 ATR — let price breathe
-- TP = 3.0 ATR — capture the daily move
+- Use 1m for precise entry timing and confirmation
+- Wide SL (see table below) — let price breathe through noise
+- Wide TP — capture the full intraday move
 - Hold for hours, not minutes
 - Fewer trades, bigger moves
 {warnings_block}
@@ -249,10 +248,9 @@ Conditions:
 | Take Profit | {short_tp:.2f} | -{short_potential_pct:.2f}% |
 
 **Rules:**
-1. SL = 2.0 ATR (wider than scalp)
-2. TP = 3.0 ATR (R:R = 1:1.5)
-3. Do NOT move SL against your position
-4. Move SL to breakeven after +1% move
+1. Use the SL/TP levels from the table above (ATR-based, regime-adjusted)
+2. Do NOT move SL against your position
+3. Move SL to breakeven after price moves halfway to TP
 
 ---
 
@@ -284,13 +282,13 @@ Conditions:
 **Soft filters:**
 - Price in middle of range (far from levels)
 - Conflicting trends (Global UP, Local BEARISH)
-- Dead session hours (21-23 UTC)
+- Off-session hours (lower liquidity, use caution)
 
 **IMPORTANT:** Do not skip a trade due to imperfection.
 If there is HTF direction + LTF confirmation + volume — consider entry."""
 
     def get_position_management(self, ctx: dict) -> str:
-        return """### POSITION MANAGEMENT (INTRADAY MODE)
+        return """### POSITION MANAGEMENT (AI SCALP MODE)
 
 **RULE:** Let profits run, but don't be greedy.
 
@@ -314,7 +312,7 @@ If there is HTF direction + LTF confirmation + volume — consider entry."""
    - No movement > 2 hours = consider exit"""
 
     def get_special_situations(self, ctx: dict) -> str:
-        return """### SPECIAL SITUATIONS (INTRADAY)
+        return """### SPECIAL SITUATIONS (AI SCALP)
 
 **1. STRONG TREND DAY:**
 - Price moves in one direction all day

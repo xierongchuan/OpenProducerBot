@@ -267,8 +267,9 @@ class TestPerformanceTracker:
         stats = tracker_with_data.get_stats(last_n=3)
         assert stats["total_trades"] == 3
 
-    def test_get_stats_empty(self):
+    def test_get_stats_empty(self, temp_data_dir, monkeypatch):
         """Тест статистики при пустой истории."""
+        monkeypatch.setattr('src.core.performance.DATA_DIR', temp_data_dir)
         tracker = PerformanceTracker()
         stats = tracker.get_stats()
 

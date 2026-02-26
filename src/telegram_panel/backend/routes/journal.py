@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..services.auth import get_current_user
@@ -10,6 +12,87 @@ reader = DataReader()
 @router.get("")
 async def get_journal(_user: dict = Depends(get_current_user)) -> dict:
     return reader.read_journal()
+
+
+@router.get("/stats")
+async def get_journal_stats(_user: dict = Depends(get_current_user)) -> dict:
+    journal = reader.read_journal()
+    config = reader.read_config()
+
+    strategy_style = config.get("STRATEGY_STYLE", "AISCALP")
+    style_presets = config.get("STYLE_PRESETS", {})
+    current_preset = style_presets.get(strategy_style, {})
+    cooldown_hours = current_preset.get("cooldown_after_close_hours", 0)
+
+    now = datetime.now()
+    symbols_stats = {}
+    total_entries = 0
+    total_active_plans = 0
+    all_confidences: list[float] = []
+
+    for symbol, data in journal.items():
+        entries = data.get("entries", [])
+        trade_plan = data.get("trade_plan")
+        last_close_time = data.get("last_close_time")
+
+        entry_count = len(entries)
+        total_entries += entry_count
+
+        action_dist = {"buy": 0, "sell": 0, "hold": 0, "close": 0}
+        confidences: list[float] = []
+        last_action_time = None
+
+        for e in entries:
+            action = e.get("action", "hold")
+            action_dist[action] = action_dist.get(action, 0) + 1
+            if e.get("confidence"):
+                confidences.append(e["confidence"])
+                all_confidences.append(e["confidence"])
+            if e.get("time"):
+                last_action_time = e["time"]
+
+        in_cooldown = False
+        cooldown_remaining = 0.0
+        if last_close_time and cooldown_hours > 0:
+            try:
+                close_dt = datetime.strptime(last_close_time, "%Y-%m-%d %H:%M:%S")
+                hours_since = (now - close_dt).total_seconds() / 3600
+                if hours_since < cooldown_hours:
+                    in_cooldown = True
+                    cooldown_remaining = round(cooldown_hours - hours_since, 2)
+            except (ValueError, TypeError):
+                pass
+
+        position_age_hours = None
+        if trade_plan and trade_plan.get("time"):
+            try:
+                entry_dt = datetime.strptime(trade_plan["time"], "%Y-%m-%d %H:%M:%S")
+                position_age_hours = round((now - entry_dt).total_seconds() / 3600, 2)
+            except (ValueError, TypeError):
+                pass
+
+        has_active_plan = trade_plan is not None
+        if has_active_plan:
+            total_active_plans += 1
+
+        symbols_stats[symbol] = {
+            "entry_count": entry_count,
+            "action_distribution": action_dist,
+            "avg_confidence": round(sum(confidences) / len(confidences), 2) if confidences else 0,
+            "last_action_time": last_action_time,
+            "has_active_plan": has_active_plan,
+            "in_cooldown": in_cooldown,
+            "cooldown_remaining_hours": cooldown_remaining,
+            "position_age_hours": position_age_hours,
+            "last_close_time": last_close_time,
+        }
+
+    return {
+        "total_entries": total_entries,
+        "active_plans_count": total_active_plans,
+        "avg_confidence": round(sum(all_confidences) / len(all_confidences), 2) if all_confidences else 0,
+        "symbols": symbols_stats,
+    }
 
 
 @router.get("/{symbol}")

@@ -1,5 +1,5 @@
 """
-Deterministic Signal Generator for INTRADAY mode.
+Deterministic Signal Generator for AISCALP mode.
 Generates trading signals using HTF trend alignment, session awareness, and tiered scoring.
 AI confirms/rejects these signals — it cannot generate its own direction.
 
@@ -16,7 +16,7 @@ TIERED SCORING SYSTEM:
     - Bollinger Bands: +1
     - Volume: +1
   Interaction bonuses/penalties: ±1..3
-  Session adjustment: +1 (overlap) / -2 (dead zone)
+  Session adjustment: +1 (overlap) / -1 (off-session)
 
 Max base: 13, Min for signal: regime-adaptive (default 5)
 """
@@ -25,11 +25,11 @@ from src.config import BOT_CONFIG
 from src.utils.logger import info, warning
 
 
-class IntradaySignalGenerator:
-    """Intraday signal generator with HTF trend and session awareness."""
+class AiScalpSignalGenerator:
+    """AISCALP signal generator with HTF trend and session awareness."""
 
     def __init__(self):
-        self.settings = BOT_CONFIG.get("INTRADAY_SETTINGS", {})
+        self.settings = BOT_CONFIG.get("AISCALP_SETTINGS", {})
         self.scoring = self.settings.get("signal_scoring", {})
         self.weights = self.scoring.get("weights", {})
         self.interactions = self.settings.get("interaction_rules", {})
@@ -65,16 +65,11 @@ class IntradaySignalGenerator:
             if htf_trend == "NEUTRAL" and daily_bias == "NEUTRAL":
                 return False, "No HTF trend and no daily bias"
 
-        # 4. Dead session (21-23 UTC)
-        if pf_cfg.get("skip_dead_session", True):
-            if session_quality == "DEAD":
-                return False, "Dead trading session"
-
         return True, "Passed"
 
     def generate_signal(self, analysis: dict, htf_data: dict, session_data: dict, regime: dict = None) -> dict:
         """
-        Generate deterministic intraday signal with HTF and session context.
+        Generate deterministic AISCALP signal with HTF and session context.
 
         Args:
             analysis: dict with indicators from analyzer (5m timeframe)
@@ -138,12 +133,12 @@ class IntradaySignalGenerator:
 
         # === HARD FILTERS ===
         if atr_ratio < min_atr:
-            info(f"📊 [INTRADAY] HOLD | Low volatility (ATR: {atr_ratio:.2f})")
+            info(f"📊 [AISCALP] HOLD | Low volatility (ATR: {atr_ratio:.2f})")
             return self._hold_result(max_score, [f"Low volatility (ATR {atr_ratio:.2f})"],
                                      {"atr_ratio": atr_ratio, "filter": "volatility"}, regime)
 
         if volume_ratio < min_volume:
-            info(f"📊 [INTRADAY] HOLD | Low volume ({volume_ratio:.2f}x)")
+            info(f"📊 [AISCALP] HOLD | Low volume ({volume_ratio:.2f}x)")
             return self._hold_result(max_score, [f"Low volume ({volume_ratio:.2f}x)"],
                                      {"volume_ratio": volume_ratio, "filter": "volume"}, regime)
 
@@ -453,9 +448,9 @@ class IntradaySignalGenerator:
         htf_label = htf_trend[:1] if htf_trend != "NEUTRAL" else "N"
         sess_label = session_quality[:1]
         if signal != "HOLD":
-            info(f"📊 [INTRADAY] {signal} | {score}/{max_score} Q:{quality:.2f} [{regime_label}] HTF:{htf_label} Sess:{sess_label} | {' '.join(reasons[:3])}")
+            info(f"📊 [AISCALP] {signal} | {score}/{max_score} Q:{quality:.2f} [{regime_label}] HTF:{htf_label} Sess:{sess_label} | {' '.join(reasons[:3])}")
         else:
-            info(f"📊 [INTRADAY] HOLD | L:{long_score} S:{short_score} (need {min_score}) [{regime_label}] HTF:{htf_label}")
+            info(f"📊 [AISCALP] HOLD | L:{long_score} S:{short_score} (need {min_score}) [{regime_label}] HTF:{htf_label}")
 
         return result
 
@@ -502,7 +497,7 @@ class IntradaySignalGenerator:
         if pos_type == "SELL" and macd_hist > 0 and pnl_pct < macd_exit_pnl:
             return {"should_close": True, "reason": f"MACD↑ + loss {pnl_pct:.1f}%", "urgency": "high"}
 
-        # 4. HTF trend reversal against position (INTRADAY-specific)
+        # 4. HTF trend reversal against position (AISCALP-specific)
         if htf_data:
             htf_trend = htf_data.get("htf_trend", "NEUTRAL")
             if pos_type == "BUY" and htf_trend == "BEARISH" and pnl_pct < 0:
@@ -584,20 +579,20 @@ class IntradaySignalGenerator:
 _generator = None
 
 
-def get_intraday_signal_generator() -> IntradaySignalGenerator:
+def get_aiscalp_signal_generator() -> AiScalpSignalGenerator:
     global _generator
     if _generator is None:
-        _generator = IntradaySignalGenerator()
+        _generator = AiScalpSignalGenerator()
     return _generator
 
 
-def intraday_pre_filter(analysis: dict, htf_data: dict, session_data: dict) -> tuple:
-    return get_intraday_signal_generator().pre_filter(analysis, htf_data, session_data)
+def aiscalp_pre_filter(analysis: dict, htf_data: dict, session_data: dict) -> tuple:
+    return get_aiscalp_signal_generator().pre_filter(analysis, htf_data, session_data)
 
 
-def generate_intraday_signal(analysis: dict, htf_data: dict, session_data: dict, regime: dict = None) -> dict:
-    return get_intraday_signal_generator().generate_signal(analysis, htf_data, session_data, regime)
+def generate_aiscalp_signal(analysis: dict, htf_data: dict, session_data: dict, regime: dict = None) -> dict:
+    return get_aiscalp_signal_generator().generate_signal(analysis, htf_data, session_data, regime)
 
 
-def intraday_should_close(analysis: dict, position: dict, htf_data: dict = None) -> dict:
-    return get_intraday_signal_generator().should_close_position(analysis, position, htf_data)
+def aiscalp_should_close(analysis: dict, position: dict, htf_data: dict = None) -> dict:
+    return get_aiscalp_signal_generator().should_close_position(analysis, position, htf_data)

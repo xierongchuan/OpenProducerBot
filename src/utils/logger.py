@@ -64,7 +64,10 @@ def setup_symbol_logger(symbol):
     code_logger.addHandler(new_handler)
 
 # Инициализация дефолтного хэндлера
-code_file_handler = logging.FileHandler(default_log_file, mode='a', encoding='utf-8')
+try:
+    code_file_handler = logging.FileHandler(default_log_file, mode='a', encoding='utf-8')
+except OSError:
+    code_file_handler = logging.StreamHandler()
 code_file_handler.setFormatter(formatter)
 code_logger.addHandler(code_file_handler)
 

@@ -31,6 +31,24 @@
     "RSI_SELL_ENTRY_MIN": 35
   },
   "CHART_RANGES": {
+    "15m": {
+      "minutes": 15,
+      "candles": 15,
+      "interval": "1m",
+      "ai_context_candles": 15
+    },
+    "30m": {
+      "minutes": 30,
+      "candles": 30,
+      "interval": "1m",
+      "ai_context_candles": 30
+    },
+    "1h": {
+      "hours": 1,
+      "candles": 60,
+      "interval": "1m",
+      "ai_context_candles": 60
+    },
     "6h": {
       "hours": 6,
       "candles": 360,
@@ -47,7 +65,7 @@
       "days": 1,
       "candles": 1440,
       "interval": "1m",
-      "ai_context_candles": 500
+      "ai_context_candles": 600
     },
     "3D": {
       "days": 3,
@@ -140,7 +158,7 @@
     "enabled": true,
     "max_entries": {
       "SCALP": 5,
-      "INTRADAY": 10,
+      "AISCALP": 10,
       "SWING": 50,
       "GRID": 20,
       "HYBRID": 10
@@ -177,10 +195,11 @@
   },
   "SMART_SAMPLING": {
     "enabled": true,
-    "recent_candles": 30,
+    "recent_candles": 40,
     "history_step": 1
   },
   "CHART_SETTINGS": {
+    "enabled": false,
     "update_interval": 10,
     "min_sleep": 0.5,
     "sma_periods": [
@@ -204,7 +223,7 @@
     "max_tokens": 4096,
     "reasoning": {
       "enabled": true,
-      "effort": "high",
+      "effort": "medium",
       "exclude": true
     },
     "retry_count": 3,
@@ -239,12 +258,12 @@
   "MOMENTUM_STRATEGY": {
     "enabled": true,
     "min_volume_ratio": 0.5,
-    "max_candles_in_prompt": 50,
+    "max_candles_in_prompt": 100,
     "trend_consensus_required": false,
     "momentum_entry_enabled": true,
     "momentum_consecutive_candles": 3
   },
-  "STRATEGY_STYLE": "INTRADAY",
+  "STRATEGY_STYLE": "AISCALP",
   "STYLE_PRESETS": {
     "SCALP": {
       "timeframe": "1m",
@@ -257,15 +276,15 @@
       "leverage": 15,
       "description": "Dual-loop scalp engine with deterministic signals and trailing stops."
     },
-    "INTRADAY": {
-      "timeframe": "5m",
+    "AISCALP": {
+      "timeframe": "1m",
       "htf_timeframe": "1h",
       "chart_period": "1D",
-      "plotter_period": "6h",
+      "plotter_period": "1h",
       "loop_interval": 60,
       "position_check_interval": 10,
-      "atr_sl_mult": 2,
-      "atr_tp_mult": 3,
+      "atr_sl_mult": 5,
+      "atr_tp_mult": 7,
       "leverage": 10,
       "description": "Day trading, capturing daily trends."
     },
@@ -280,7 +299,7 @@
       "leverage": 5,
       "min_hold_hours": 24,
       "cooldown_after_close_hours": 6,
-      "description": "Multi-day holding (Days/Weeks), wide stops, ignoring intraday noise."
+      "description": "Multi-day holding (Days/Weeks), wide stops, ignoring short-term noise."
     },
     "GRID": {
       "timeframe": "1m",
@@ -340,7 +359,7 @@
       "rsi_divergence_penalty": -2
     }
   },
-  "INTRADAY_SETTINGS": {
+  "AISCALP_SETTINGS": {
     "signal_scoring": {
       "weights": {
         "htf_trend": 3,
@@ -384,13 +403,7 @@
           "end_utc": 21
         }
       },
-      "overlap_bonus": 1,
-      "dead_zone_hours": [
-        21,
-        22,
-        23
-      ],
-      "dead_zone_penalty": -2
+      "overlap_bonus": 1
     },
     "multi_timeframe": {
       "enabled": true,
@@ -409,8 +422,7 @@
         46,
         54
       ],
-      "skip_no_htf_trend": true,
-      "skip_dead_session": true
+      "skip_no_htf_trend": true
     },
     "ai_filter": {
       "enabled": false,

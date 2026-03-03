@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getSystemLogs, getSymbolLogs, getDashboard } from '../api/client';
+import { getSystemLogs, getSymbolLogs, getDashboard, getActiveTrades } from '../api/client';
 import { LogViewer } from '../components/LogViewer';
 import { Spinner } from '../components/Spinner';
 
@@ -11,6 +11,7 @@ export function Logs({ subscribe }: { subscribe: (type: string, cb: (data: Recor
   const [symbols, setSymbols] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [symbolsWithPositions, setSymbolsWithPositions] = useState<Set<string>>(new Set());
 
   const fetchLogs = useCallback(async (src: string) => {
     try {
@@ -37,6 +38,20 @@ export function Logs({ subscribe }: { subscribe: (type: string, cb: (data: Recor
     getDashboard().then((d) => {
       setSymbols(d.symbols || []);
     }).catch(() => {});
+
+    // Fetch active trades to get symbols with positions
+    const fetchPositions = () => {
+      getActiveTrades().then((trades) => {
+        const tradesArray = Array.isArray(trades) ? trades : Object.values(trades);
+        const symbolsSet = new Set((tradesArray as any[]).map((t: any) => t.symbol));
+        setSymbolsWithPositions(symbolsSet);
+      }).catch(() => {});
+    };
+    fetchPositions();
+
+    // Refresh positions every 10 seconds
+    const interval = setInterval(fetchPositions, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -53,7 +68,15 @@ export function Logs({ subscribe }: { subscribe: (type: string, cb: (data: Recor
         fetchLogs(source);
       }
     });
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = subscribe('trade_update', () => {
+      // Refresh positions when trades change
+      getActiveTrades().then((trades) => {
+        const tradesArray = Array.isArray(trades) ? trades : Object.values(trades);
+        const symbolsSet = new Set((tradesArray as any[]).map((t: any) => t.symbol));
+        setSymbolsWithPositions(symbolsSet);
+      }).catch(() => {});
+    });
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [subscribe, source, fetchLogs]);
 
   return (
@@ -84,10 +107,11 @@ export function Logs({ subscribe }: { subscribe: (type: string, cb: (data: Recor
           <button
             key={s}
             onClick={() => setSource(s)}
-            className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+            className={`text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               source === s ? 'bg-tg-button text-white' : 'bg-tg-section-bg text-tg-hint'
             }`}
           >
+            <span className={`w-2.5 h-2.5 rounded-full ${symbolsWithPositions.has(s) ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.9)]' : 'bg-gray-500'}`} />
             {s}
           </button>
         ))}

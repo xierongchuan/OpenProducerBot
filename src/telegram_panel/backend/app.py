@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,6 +15,7 @@ from .services.file_watcher import FileWatcher
 from .ws import manager
 
 logger = logging.getLogger("panel.app")
+
 
 file_watcher: FileWatcher | None = None
 
@@ -73,6 +75,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Request logging middleware
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    """Log all HTTP requests for debugging."""
+    start_time = time.time()
+    path = request.url.path
+    method = request.method
+
+    # Skip logging for static assets and websocket
+    if path.startswith(("/assets/", "/ws")):
+        return await call_next(request)
+
+    logger.info("→ %s %s", method, path)
+
+    try:
+        response = await call_next(request)
+        duration = (time.time() - start_time) * 1000
+        logger.info("← %s %s → %d (%.1fms)", method, path, response.status_code, duration)
+        return response
+    except Exception as e:
+        duration = (time.time() - start_time) * 1000
+        logger.error("← %s %s → EXCEPTION: %s (%.1fms)", method, path, e, duration)
+        raise
+
+
 # API routes
 app.include_router(dashboard.router)
 app.include_router(trades.router)
@@ -86,6 +114,30 @@ app.include_router(chart_data.router)
 @app.get("/api/health")
 async def health_check() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/debug")
+async def debug_info() -> dict:
+    """Diagnostic endpoint — returns env and config paths."""
+    from .config import DATA_DIR, CHARTS_DIR, CONFIG_PATH, PROJECT_ROOT
+
+    config_dir = CONFIG_PATH.parent / "config"
+    return {
+        "status": "ok",
+        "paths": {
+            "project_root": str(PROJECT_ROOT),
+            "project_root_exists": PROJECT_ROOT.is_dir(),
+            "config_path": str(CONFIG_PATH),
+            "config_exists": CONFIG_PATH.exists(),
+            "data_dir": str(DATA_DIR),
+            "data_dir_exists": DATA_DIR.is_dir(),
+            "charts_dir": str(CHARTS_DIR),
+            "charts_dir_exists": CHARTS_DIR.is_dir(),
+            "config_dir": str(config_dir),
+            "config_dir_exists": config_dir.is_dir(),
+            "active_json_exists": (config_dir / "active.json").exists() if config_dir.is_dir() else False,
+        },
+    }
 
 
 @app.websocket("/ws")

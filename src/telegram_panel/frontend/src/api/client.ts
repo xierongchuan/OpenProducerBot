@@ -22,7 +22,18 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
     if (res.status === 403) {
       throw new Error('У вас нет доступа к этой панели');
     }
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
+    // Try to extract error detail from response body
+    let detail = '';
+    try {
+      const body = await res.json();
+      if (body.detail) {
+        detail = `: ${body.detail}`;
+        if (body.type) detail += ` (${body.type})`;
+      }
+    } catch {
+      // Response body is not JSON
+    }
+    throw new Error(`API error: ${res.status}${detail}`);
   }
   return res.json();
 }

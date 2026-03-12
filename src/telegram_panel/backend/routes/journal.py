@@ -11,7 +11,7 @@ from ..config import CONFIG_PATH
 router = APIRouter(prefix="/api/journal", tags=["journal"])
 reader = DataReader()
 
-_CONFIG_DIR = CONFIG_PATH.parent / "config"
+_CONFIG_DIR = CONFIG_PATH.parent
 
 
 def _get_strategy_cooldown() -> tuple[str, float]:

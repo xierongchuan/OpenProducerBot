@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     logger.info("  CHARTS_DIR: %s (exists=%s)", CHARTS_DIR, CHARTS_DIR.is_dir())
 
     # Check new config system
-    config_dir = CONFIG_PATH.parent / "config"
+    config_dir = CONFIG_PATH.parent
     logger.info("  CONFIG_DIR: %s (exists=%s)", config_dir, config_dir.is_dir())
     if config_dir.is_dir():
         logger.info("  active.json exists: %s", (config_dir / "active.json").exists())
@@ -121,7 +121,7 @@ async def debug_info() -> dict:
     """Diagnostic endpoint — returns env and config paths."""
     from .config import DATA_DIR, CHARTS_DIR, CONFIG_PATH, PROJECT_ROOT
 
-    config_dir = CONFIG_PATH.parent / "config"
+    config_dir = CONFIG_PATH.parent
     return {
         "status": "ok",
         "paths": {

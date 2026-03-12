@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api", tags=["dashboard"])
 reader = DataReader()
 
 # New config system dir
-_CONFIG_DIR = CONFIG_PATH.parent / "config"
+_CONFIG_DIR = CONFIG_PATH.parent
 
 
 def _get_symbols_and_strategy() -> tuple[list[str], str]:

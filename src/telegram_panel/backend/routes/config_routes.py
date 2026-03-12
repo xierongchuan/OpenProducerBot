@@ -29,7 +29,7 @@ reader = DataReader()
 
 # Paths for config system
 # Derive from CONFIG_PATH parent to work in container (/app/config/)
-CONFIG_DIR = CONFIG_PATH.parent / "config"
+CONFIG_DIR = CONFIG_PATH.parent
 STRATEGIES_DIR = CONFIG_DIR / "strategies"
 PROFILES_DIR = CONFIG_DIR / "profiles"
 

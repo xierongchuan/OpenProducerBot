@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/trades", tags=["trades"])
 reader = DataReader()
 
 # Derive new config dir from CONFIG_PATH parent
-_CONFIG_DIR = CONFIG_PATH.parent / "config"
+_CONFIG_DIR = CONFIG_PATH.parent
 
 
 def _use_new_config() -> bool:

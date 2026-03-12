@@ -354,8 +354,8 @@ class WebSocketDataProvider:
                 "volume": float(k.get("v") or k.get("volume", 0))
             }
 
-            # DEBUG: Log every kline update
-            info(f"[WS-KLINE] {symbol}: close={new_candle['closePrice']:.4f}, vol={new_candle['volume']:.2f}")
+            # DEBUG: Log every kline update (commented out to prevent log flooding)
+            # info(f"[WS-KLINE] {symbol}: close={new_candle['closePrice']:.4f}, volume={new_candle['volume']:.2f}")
 
             # Update cache
             self._update_cache(symbol, new_candle)

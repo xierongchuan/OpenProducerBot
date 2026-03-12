@@ -28,6 +28,8 @@ class WebSocketDataProvider:
     Subscribes to kline streams for all configured symbols.
     """
 
+    # BingX Market Data WebSocket — один URL для demo и real
+    # (рыночные данные публичные, не зависят от VST/prod)
     WS_URL = "wss://open-api-ws.bingx.com/market"
     CACHE_SIZE = 600  # Keep 600 candles per symbol
 
@@ -46,6 +48,15 @@ class WebSocketDataProvider:
         self._running = False
         self._symbols: List[str] = []
         self._interval: str = "5m"
+        self._ws_url = self.WS_URL
+        info(f"[WS] Using endpoint: {self._ws_url}")
+        # BingX Swap interval mapping (short -> BingX API format)
+        self._interval_map = {
+            "1m": "1min", "3m": "3min", "5m": "5min",
+            "15m": "15min", "30m": "30min",
+            "1h": "1hour", "4h": "4hour", "12h": "12hour",
+            "1d": "1day", "1w": "1week", "1M": "1month",
+        }
         self._reconnect_delay = 1
         self._max_reconnect_delay = 60
         self._last_msg_time = 0.0
@@ -191,7 +202,7 @@ class WebSocketDataProvider:
     def _connect_websocket(self):
         """Establish WebSocket connection and subscribe."""
         self._ws = websocket.WebSocketApp(
-            self.WS_URL,
+            self._ws_url,
             on_open=self._on_open,
             on_message=self._on_message,
             on_error=self._on_error,
@@ -209,26 +220,21 @@ class WebSocketDataProvider:
         self._last_msg_time = time.time()
 
         # Subscribe to each symbol's kline stream
-        # BingX WebSocket uses format: btcusdt@kline_1m (no dash, lowercase)
+        # BingX WS format: BTC-USDT@kline_1min (дефис в символе, @kline_ разделитель, 1min интервал)
+        bingx_interval = self._interval_map.get(self._interval, self._interval)
         for symbol in self._symbols:
-            # Normalize to format without dash: BTCUSDT -> btcusdt
-            if "-" in symbol:
-                # BTC-USDT -> btcusdt
-                ws_symbol = symbol.replace("-", "").lower()
-            elif symbol.endswith("USDT"):
-                # BTCUSDT -> btcusdt
-                ws_symbol = symbol.lower()
-            else:
-                ws_symbol = symbol.lower()
+            # Нормализуем символ в формат с дефисом: BTCUSDT -> BTC-USDT
+            ws_symbol = self._normalize_symbol(symbol)
 
+            data_type = f"{ws_symbol}@kline_{bingx_interval}"
             sub_msg = {
                 "id": f"kline_{ws_symbol}",
                 "reqType": "sub",
-                "dataType": f"{ws_symbol}@kline_{self._interval}"
+                "dataType": data_type
             }
             ws.send(json.dumps(sub_msg))
-            info(f"[WS] Subscribing: {ws_symbol}@kline_{self._interval}")
-            time.sleep(0.05)  # Small delay between subscriptions
+            info(f"[WS] Subscribing: {data_type}")
+            time.sleep(0.05)  # Небольшая задержка между подписками
 
         info(f"[WS] Subscribed to {len(self._symbols)} kline streams")
 
@@ -262,11 +268,11 @@ class WebSocketDataProvider:
 
             data = json.loads(message)
 
-            # DEBUG: Log first 10 messages of any type
+            # DEBUG: Логирование первых 30 сообщений любого типа
             if not hasattr(self, '_debug_msg_count'):
                 self._debug_msg_count = 0
-            if self._debug_msg_count < 10:
-                info(f"[WS-DEBUG] Raw message: {str(data)[:200]}")
+            if self._debug_msg_count < 30:
+                info(f"[WS-DEBUG] Raw message #{self._debug_msg_count}: {str(data)[:300]}")
                 self._debug_msg_count += 1
 
             # Handle BingX ping/pong (keeps connection alive)
@@ -282,12 +288,15 @@ class WebSocketDataProvider:
 
             # Handle kline update
             data_type = data.get("dataType", "")
-            if "@kline_" in data_type:
+            if "@kline_" in data_type or "market.kline." in data_type:
                 self._handle_kline_update(data)
             else:
-                # DEBUG: Log non-kline messages
-                if self._debug_msg_count < 20:
-                    info(f"[WS-DEBUG] Non-kline message type: {data_type}")
+                # DEBUG: Логирование прочих сообщений (подписки ACK и т.д.)
+                if not hasattr(self, '_debug_non_kline_count'):
+                    self._debug_non_kline_count = 0
+                if self._debug_non_kline_count < 30:
+                    info(f"[WS-DEBUG] Non-kline msg #{self._debug_non_kline_count}: dataType='{data_type}' keys={list(data.keys())} data={str(data)[:200]}")
+                    self._debug_non_kline_count += 1
 
         except json.JSONDecodeError:
             pass  # Ignore non-JSON messages
@@ -297,27 +306,31 @@ class WebSocketDataProvider:
     def _handle_kline_update(self, data: dict):
         """Process kline update from WebSocket."""
         try:
-            # Extract symbol from dataType: "btcusdt@kline_1m" (lowercase, no dash)
             data_type = data.get("dataType", "")
-            # BingX returns: btcusdt@kline_1m -> BTC-USDT
-            raw_symbol = data_type.split("@")[0].lower()
-            # Convert btcusdt -> BTC-USDT
-            if raw_symbol.endswith("usdt"):
-                symbol = raw_symbol[:-4].upper() + "-USDT"
+
+            # Извлечение символа из dataType
+            if "@kline_" in data_type:
+                # BingX format: BTC-USDT@kline_1min -> BTC-USDT
+                symbol = data_type.split("@")[0]
+                # Если пришло в lowercase (btcusdt@kline_1min), нормализуем
+                if "-" not in symbol and symbol.lower().endswith("usdt"):
+                    symbol = symbol[:-4].upper() + "-USDT"
+            elif "market.kline." in data_type:
+                # Alt format: market.kline.BTC-USDT.1min -> BTC-USDT
+                parts = data_type.split(".")
+                symbol = parts[2] if len(parts) >= 3 else "UNKNOWN"
             else:
-                symbol = raw_symbol.upper()
+                return
 
             kline_data = data.get("data")
 
-            # BingX Swap WebSocket returns a list in data
+            # BingX Swap WebSocket может вернуть список или словарь
             if isinstance(kline_data, list):
                 if len(kline_data) == 0:
                     warning(f"[WS-KLINE] {symbol}: No kline data (empty list)")
                     return
-                # Get the most recent candle update from the list
-                k = kline_data[-1] 
+                k = kline_data[-1]
             elif isinstance(kline_data, dict):
-                # Standard/Spot fallback
                 k = kline_data.get("K", kline_data)
             else:
                 warning(f"[WS-KLINE] {symbol}: Unknown kline_data format {type(kline_data)}")
@@ -327,16 +340,18 @@ class WebSocketDataProvider:
                 warning(f"[WS-KLINE] {symbol}: No kline data structure found")
                 return
 
-            # Format the candle
-            ts_ms = k.get("t", int(time.time() * 1000))
+            # Формируем свечу — BingX Swap использует как сокращённые (o/h/l/c/v/t),
+            # так и полные (open/high/low/close/volume/time) имена полей
+            ts_ms = k.get("t") or k.get("time") or int(time.time() * 1000)
+            ts_ms = int(ts_ms)
             new_candle = {
                 "snapshotTimeUTC": time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(ts_ms / 1000)),
                 "timestamp": ts_ms,
-                "openPrice": float(k.get("o", 0)),
-                "highPrice": float(k.get("h", 0)),
-                "lowPrice": float(k.get("l", 0)),
-                "closePrice": float(k.get("c", 0)),
-                "volume": float(k.get("v", 0))
+                "openPrice": float(k.get("o") or k.get("open", 0)),
+                "highPrice": float(k.get("h") or k.get("high", 0)),
+                "lowPrice": float(k.get("l") or k.get("low", 0)),
+                "closePrice": float(k.get("c") or k.get("close", 0)),
+                "volume": float(k.get("v") or k.get("volume", 0))
             }
 
             # DEBUG: Log every kline update

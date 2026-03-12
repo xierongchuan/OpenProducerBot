@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 
 from ..services.auth import get_current_user
 from ..services.data_reader import DataReader
-from ..config import PROJECT_ROOT
+from ..config import CONFIG_PATH
 
 logger = logging.getLogger("panel.config")
 
@@ -27,7 +27,9 @@ router = APIRouter(prefix="/api/config", tags=["config"])
 reader = DataReader()
 
 # Paths for new config system
-CONFIG_DIR = PROJECT_ROOT / "config"
+# Derive from CONFIG_PATH to work correctly in container environments
+# where bot_config.json and config/ are both mounted to /app/
+CONFIG_DIR = CONFIG_PATH.parent / "config"
 STRATEGIES_DIR = CONFIG_DIR / "strategies"
 PROFILES_DIR = CONFIG_DIR / "profiles"
 

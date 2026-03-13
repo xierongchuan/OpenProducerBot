@@ -133,8 +133,9 @@ class TestSymbolConfigResolution:
 
     def test_resolve_with_strategy_override(self):
         """Strategy override should be applied."""
-        result1 = resolve_symbol_config("BTCUSDT", strategy="HYBRID")
-        result2 = resolve_symbol_config("BTCUSDT", strategy="SCALP")
+        # Use SOLUSDT which uses default profile (no strategy restriction)
+        result1 = resolve_symbol_config("SOLUSDT", strategy="HYBRID")
+        result2 = resolve_symbol_config("SOLUSDT", strategy="SCALP")
         # They should be different if strategy configs differ
         if "_resolved" in result1 and "_resolved" in result2:
             assert result1["_resolved"]["strategy"] != result2["_resolved"]["strategy"]
@@ -171,10 +172,11 @@ class TestProfileStrategyValidation:
 
     def test_invalid_profile_strategy_rejected(self):
         """Profile with different strategy should raise ValueError."""
-        profile_config = load_profile_config("eth_conservative")
+        # Use btc_aggressive which has _strategy: SCALP
+        profile_config = load_profile_config("btc_aggressive")
         with pytest.raises(ValueError) as exc_info:
-            validate_profile_strategy_match("eth_conservative", "SCALP", profile_config)
-        assert "belongs to strategy 'MACDX'" in str(exc_info.value)
+            validate_profile_strategy_match("btc_aggressive", "HYBRID", profile_config)
+        assert "belongs to strategy 'SCALP'" in str(exc_info.value)
 
     def test_default_profile_compatible_with_any_strategy(self):
         """Default profile (null strategy) should be compatible with any strategy."""

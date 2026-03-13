@@ -3,17 +3,14 @@
   "_version": "1.0.0",
   "_inherits": "default",
   "_strategy": "SCALP",
-
   "preset": {
     "leverage": 15,
     "atr_sl_mult": 1.0,
     "atr_tp_mult": 2.5
   },
-
   "position": {
     "size_percent": 15
   },
-
   "signal_rules": {
     "min_score_for_signal": 3
   }

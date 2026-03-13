@@ -219,6 +219,20 @@ class BingXClient(ExchangeClient):
         """Legacy method: Получает баланс Perpetual Futures (для совместимости)"""
         return self.get_perpetual_balance()
 
+    def get_klines(self, symbol, interval="5m", limit=288):
+        """Получить исторические данные свечей (klines)."""
+        return self.get_kline_data(symbol, interval, limit)
+
+    def normalize_symbol(self, symbol: str) -> str:
+        """Нормализовать символ в универсальный формат (BTC-USDT)."""
+        if symbol.endswith("USDT") and "-" not in symbol and "/" not in symbol:
+            return symbol[:-4] + "-" + symbol[-4:]
+        return symbol.replace("/", "-")
+
+    def denormalize_symbol(self, symbol: str) -> str:
+        """Денормализовать символ в формат BingX (BTCUSDT)."""
+        return symbol.replace("-", "").replace("/", "")
+
     def get_kline_data(self, symbol, interval="5m", limit=288):
         """
         Получает исторические данные свечей.

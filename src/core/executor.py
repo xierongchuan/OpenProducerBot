@@ -182,8 +182,7 @@ def create_order(symbol, direction, price, ai_sl=None, ai_tp=None, reason="Unkno
 
         if order_id:
             # Invalidate positions cache so set_sl_tp fetches actual position size
-            from src.exchanges.bingx_client import BingXClient
-            BingXClient.invalidate_positions_cache()
+            client.invalidate_cache("positions")
 
             # Set SL/TP immediately after order placement
             if tp_price or sl_price:

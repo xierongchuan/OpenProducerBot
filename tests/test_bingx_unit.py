@@ -723,16 +723,20 @@ class TestExchangeFactory:
         """EXCHANGE=bingx → возвращается BingXClient."""
         import src.exchanges.exchange_factory as factory_mod
         from src.exchanges.bingx_client import BingXClient
+        from src.exchanges.impl.bingx_client import BingXClient as NewBingXClient
+        from src import config as src_config
 
-        with patch.object(factory_mod, "EXCHANGE", "bingx"), \
+        with patch.object(src_config, "EXCHANGE", "bingx"), \
              patch.object(factory_mod, "_client_instance", None):
             client = factory_mod.get_exchange_client()
-        assert isinstance(client, BingXClient)
+        assert isinstance(client, NewBingXClient)
 
     def test_unknown_exchange_raises(self):
         """Неизвестный exchange → ValueError."""
         import src.exchanges.exchange_factory as factory_mod
-        with patch.object(factory_mod, "EXCHANGE", "kraken"), \
+        from src import config as src_config
+
+        with patch.object(src_config, "EXCHANGE", "kraken"), \
              patch.object(factory_mod, "_client_instance", None):
             with pytest.raises(ValueError, match="Unknown exchange: kraken"):
                 factory_mod.get_exchange_client()
@@ -741,10 +745,13 @@ class TestExchangeFactory:
         """EXCHANGE проверяется в lower case."""
         import src.exchanges.exchange_factory as factory_mod
         from src.exchanges.bingx_client import BingXClient
-        with patch.object(factory_mod, "EXCHANGE", "BingX"), \
+        from src.exchanges.impl.bingx_client import BingXClient as NewBingXClient
+        from src import config as src_config
+
+        with patch.object(src_config, "EXCHANGE", "BingX"), \
              patch.object(factory_mod, "_client_instance", None):
             client = factory_mod.get_exchange_client()
-        assert isinstance(client, BingXClient)
+        assert isinstance(client, NewBingXClient)
 
 
 # ═══════════════════════════════════════════════════

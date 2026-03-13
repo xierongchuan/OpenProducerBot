@@ -45,25 +45,25 @@ class MACDXSignalGenerator:
         debug(f"[MACDX] macd_line={analysis.get('macd_line')}, macd_hist={analysis.get('macd_hist')}")
 
         # === EXTRACT DATA ===
-        current_price = analysis.get("current_price", 0)
-        rsi = analysis.get("rsi", 50)
-        volume_ratio = analysis.get("volume_ratio", 1.0)
-        ema9 = analysis.get("ema9", 0)
-        ema21 = analysis.get("ema21", 0)
+        current_price = analysis.get("current_price") or 0
+        rsi = analysis.get("rsi") or 50
+        volume_ratio = analysis.get("volume_ratio") or 1.0
+        ema9 = analysis.get("ema9") or 0
+        ema21 = analysis.get("ema21") or 0
 
-        macd_line = analysis.get("macd_line", 0)
-        macd_signal_line = analysis.get("macd_signal", 0)
-        macd_hist = analysis.get("macd_hist", 0)
-        macd_hist_prev = analysis.get("macd_hist_prev", 0)
+        macd_line = analysis.get("macd_line") or 0
+        macd_signal_line = analysis.get("macd_signal") or 0
+        macd_hist = analysis.get("macd_hist") or 0
+        macd_hist_prev = analysis.get("macd_hist_prev") or 0
 
-        bb_upper = analysis.get("bb_upper", 0)
-        bb_lower = analysis.get("bb_lower", 0)
-        bb_middle = analysis.get("bb_middle", 0)
-        atr = analysis.get("atr", 0)
-        atr_ratio = analysis.get("atr_ratio", 1.0)
+        bb_upper = analysis.get("bb_upper") or 0
+        bb_lower = analysis.get("bb_lower") or 0
+        bb_middle = analysis.get("bb_middle") or 0
+        atr = analysis.get("atr") or 0
+        atr_ratio = analysis.get("atr_ratio") or 1.0
 
         # ADX for trend strength (if available)
-        adx = analysis.get("adx", 25)  # Default to moderate trend
+        adx = analysis.get("adx") or 25  # Default to moderate trend
 
         # === CONFIG THRESHOLDS ===
         macd_cross_weight = self.rules.get("macd_cross_weight", 2)
@@ -111,7 +111,7 @@ class MACDXSignalGenerator:
         enable_counter_trend_filter = self.rules.get("enable_counter_trend_filter", True)
         counter_trend_ema_threshold = self.rules.get("counter_trend_ema_threshold", 1.0)
 
-        last_5_direction = analysis.get("last_5_direction", "MIXED")
+        last_5_direction = analysis.get("last_5_direction") or "MIXED"
 
         # Detect potential crossover for filter use
         potential_long = macd_line > macd_signal_line and macd_hist > 0 and (macd_hist_prev <= 0 or macd_hist > macd_hist_prev)
@@ -192,15 +192,20 @@ class MACDXSignalGenerator:
             # Рассчитываем потенциальный score на основе EMA и направления свечей
             # Примечание: analyzer.py выводит "STRONG UP", "STRONG DOWN" (с пробелом)
             potential_score = 0
-            if ema9 > ema21 and last_5_direction in ['UP', 'STRONG UP']:
+
+            # Обработка None и пустых значений last_5_direction
+            last_5_dir = last_5_direction if last_5_direction else "MIXED"
+
+            if ema9 > ema21 and last_5_dir in ['UP', 'STRONG UP']:
                 potential_score = 8  # Сильный бычий сигнал
-            elif ema9 > ema21 and last_5_direction == 'MIXED':
+            elif ema9 > ema21 and last_5_dir == 'MIXED':
                 potential_score = 5  # Умеренный бычий
-            elif ema9 < ema21 and last_5_direction in ['DOWN', 'STRONG DOWN']:
+            elif ema9 < ema21 and last_5_dir in ['DOWN', 'STRONG DOWN']:
                 potential_score = 8  # Сильный медвежий сигнал
-            elif ema9 < ema21 and last_5_direction == 'MIXED':
+            elif ema9 < ema21 and last_5_dir == 'MIXED':
                 potential_score = 5  # Умеренный медвежий
             # Для N/A и других неизвестных значений potential_score остается 0
+            # Дополнительная защита: если ema9 == ema21, тоже оставляем 0
 
             return self._hold_result(max_score, ["No MACD crossover signal"],
                                      {"macd_hist": macd_hist, "filter": "no_macd_cross", "potential_score": potential_score}, regime)

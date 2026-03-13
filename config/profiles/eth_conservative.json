@@ -2,6 +2,7 @@
   "_description": "Conservative profile for ETH - lower leverage, wider stops",
   "_version": "1.0.0",
   "_inherits": "default",
+  "_strategy": "MACDX",
 
   "preset": {
     "leverage": 5,

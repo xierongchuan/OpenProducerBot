@@ -131,6 +131,46 @@ def load_profile_config(profile: str) -> Dict[str, Any]:
     return config
 
 
+def validate_profile_strategy_match(profile_name: str, strategy_name: str, profile_config: Optional[Dict[str, Any]] = None) -> bool:
+    """
+    Validate that profile is compatible with strategy.
+
+    Args:
+        profile_name: Name of the profile
+        strategy_name: Name of the strategy
+        profile_config: Optional pre-loaded profile config (avoids redundant file read)
+
+    Returns:
+        True if compatible, raises ValueError if not compatible
+
+    Raises:
+        ValueError: If profile belongs to different strategy
+    """
+    # Use provided profile config or load from file
+    if profile_config is None:
+        profile_path = _get_config_path(f'profile:{profile_name}')
+        profile = _load_json_file(profile_path)
+    else:
+        profile = profile_config
+
+    # Get the strategy this profile belongs to
+    profile_strategy = profile.get('_strategy')
+
+    # If profile has _strategy defined, it must match
+    if profile_strategy:
+        profile_strategy_lower = profile_strategy.lower()
+        strategy_lower = strategy_name.lower()
+
+        if profile_strategy_lower != strategy_lower:
+            raise ValueError(
+                f"❌ Profile '{profile_name}' belongs to strategy '{profile_strategy}', "
+                f"but symbol is using strategy '{strategy_name}'. "
+                f"Use a profile compatible with {strategy_name} or change strategy."
+            )
+
+    return True
+
+
 def resolve_symbol_config(symbol: str, strategy: Optional[str] = None) -> Dict[str, Any]:
     """
     Resolve complete configuration for a symbol.
@@ -165,7 +205,13 @@ def resolve_symbol_config(symbol: str, strategy: Optional[str] = None) -> Dict[s
     # Get profile for this symbol
     symbol_profiles = active.get('symbol_profiles', {})
     profile_name = symbol_profiles.get(symbol, 'default')
+
+    # Load profile config (handles inheritance)
     profile_config = load_profile_config(profile_name)
+
+    # Validate profile matches strategy AFTER loading (pass resolved config)
+    if profile_name and profile_name != 'default':
+        validate_profile_strategy_match(profile_name, strategy, profile_config)
 
     # Merge in order: base -> trading -> strategy -> profile
     config = deep_merge(base, trading)

@@ -17,10 +17,23 @@ config/
     hybrid.json
     macdx.json
   profiles/           # Per-symbol profiles (overrides)
-    default.json      # Default profile (base for all)
+    _templates/       # Profile templates (optional)
+    default.json      # Default profile (works with any strategy)
     btc_aggressive.json
     eth_conservative.json
   active.json         # Runtime selection (strategy + profile mapping)
+```
+
+## Configuration Resolution Order
+
+Configuration is resolved in the following order (later overrides earlier):
+```
+effective_config = deep_merge(
+    base.json,           # 1. Infrastructure defaults
+    trading.json,        # 2. Trading defaults
+    strategies/{strategy}.json,  # 3. Strategy-specific settings
+    profiles/{profile}.json      # 4. Symbol-specific overrides
+)
 ```
 
 ## Configuration Categories
@@ -37,7 +50,7 @@ Rarely changed, infrastructure-level settings:
 - News settings
 
 ### 2. Trading Configuration (`config/trading.json`)
-Moderately changed, trading behavior:
+Moderately changed, controls trading behavior:
 - POSITION_SIZE_PERCENT (default)
 - MIN_TRADE_AMOUNT_USDT
 - MIN_CONFIDENCE_THRESHOLD
@@ -51,19 +64,61 @@ Moderately changed, trading behavior:
 ### 3. Strategy Configurations (`config/strategies/*.json`)
 Frequently adjusted per-strategy:
 Each file contains the complete configuration for one strategy:
-- Style preset (timeframe, loop_interval, leverage, atr_mult, etc.)
-- Signal rules (weights, thresholds, RSI zones)
-- AI filter settings
-- Interaction rules
-- Exit rules
-- Risk limits (for SCALP)
+- **Style preset** (timeframe, loop_interval, leverage, atr_mult, etc.)
+- **Signal rules** (weights, thresholds, RSI zones)
+- **AI filter settings**
+- **Interaction rules**
+- **Exit rules**
+- **Risk limits** (for SCALP)
+
+#### Available Strategies
+| Strategy | Description | Timeframe | AI | Key Parameters |
+|----------|-------------|-----------|-----|----------------|
+| SCALP | Dual-loop scalp with trailing stops | 1m | Optional | min_score_for_signal, tier1_required, weights |
+| AISCALP | Multi-timeframe AI decisions | 1m | Yes | sessions, multi_timeframe, ai_filter |
+| HYBRID | Deterministic + AI confirmation | 5m | Yes | ai_filter, min_confidence_to_approve |
+| MACDX | MACD crossover, no AI | 15m | No | macd_cross_weight, rsi_zone_weight |
+| SWING | Multi-day holding | 1h | Optional | min_hold_hours, cooldown_after_close |
+| GRID | Grid trading | 1m | Optional | grid_levels, grid_spacing_pct |
 
 ### 4. Profile Configurations (`config/profiles/*.json`)
-Per-symbol override system:
-- Inherits from strategy defaults
-- Can override any parameter
-- Supports symbol-specific tuning
-- Minimal files (only overrides, not full copy)
+Per-symbol override system with strategy binding:
+
+#### Profile Fields
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `_description` | string | No | Human-readable description |
+| `_version` | string | No | Schema version (e.g. "1.0.0") |
+| `_inherits` | string | No | Parent profile name to inherit from |
+| `_strategy` | string | **Yes** for non-default | Strategy this profile belongs to (SCALP, MACDX, etc.) |
+
+#### Profile Structure Example
+```json
+{
+  "_description": "Aggressive profile for BTC",
+  "_version": "1.0.0",
+  "_inherits": "default",
+  "_strategy": "SCALP",
+
+  "preset": {
+    "leverage": 15,
+    "atr_sl_mult": 1.0,
+    "atr_tp_mult": 2.5
+  },
+
+  "position": {
+    "size_percent": 15
+  },
+
+  "signal_rules": {
+    "min_score_for_signal": 3
+  }
+}
+```
+
+#### Special Profiles
+- **`default`** - Universal profile with `_strategy: null`. Works with any strategy. Use when you don't need symbol-specific overrides.
+- **`_templates/`** - Future: reusable profile templates for common configurations (aggressive, conservative, balanced)
 
 ### 5. Active Configuration (`config/active.json`)
 Runtime selection:
@@ -71,11 +126,60 @@ Runtime selection:
 {
   "strategy": "MACDX",
   "symbols": {
+    "bingx": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+  },
+  "symbol_profiles": {
     "BTCUSDT": "default",
     "ETHUSDT": "eth_conservative",
-    "SOLUSDT": "btc_aggressive"
+    "SOLUSDT": "default"
   },
   "disabled_symbols": []
+}
+```
+
+## Profile-Strategy Binding
+
+### Why Profiles Are Bound to Strategies
+
+Different strategies use **incompatible parameter systems**:
+
+| Strategy | Parameter System | Example |
+|----------|------------------|--------|
+| SCALP | Weighted scores (0-10+) | `min_score_for_signal: 4` = score threshold |
+| HYBRID | AI confidence (0-1) | `min_score_for_signal: 4` = 40% confidence! |
+| MACDX | Confirmation count | `min_score_for_signal: 4` = 4 confirmations |
+
+Setting `min_score_for_signal: 3` means different things for different strategies!
+
+### How It Works
+
+1. Each profile has a `_strategy` field specifying which strategy it belongs to
+2. When loading symbol config, the system validates profile-strategy compatibility
+3. If incompatible, an error is raised at startup:
+   ```
+   ❌ Profile 'btc_aggressive' belongs to strategy 'SCALP',
+   but symbol is using strategy 'MACDX'.
+   Use a profile compatible with MACDX or change strategy.
+   ```
+
+### Creating New Profiles
+
+Always specify `_strategy` for symbol-specific profiles:
+
+```json
+{
+  "_description": "Conservative profile for high-volatility pairs",
+  "_version": "1.0.0",
+  "_inherits": "default",
+  "_strategy": "SCALP",
+
+  "preset": {
+    "leverage": 5,
+    "atr_sl_mult": 2.0
+  },
+  "signal_rules": {
+    "min_score_for_signal": 6
+  }
 }
 ```
 
@@ -87,15 +191,18 @@ Profiles use a layered inheritance model:
 3. `config/strategies/{strategy}.json` - Strategy-specific defaults
 4. `config/profiles/{profile}.json` - Symbol-specific overrides
 
-When resolving a configuration for a symbol:
+### Inheritance Example
+```json
+// config/profiles/eth_conservative.json
+{
+  "_inherits": "default",
+  "_strategy": "MACDX",
+  "preset": {
+    "leverage": 5
+  }
+}
 ```
-effective_config = deep_merge(
-    base.json,
-    trading.json,
-    strategies/{active_strategy}.json,
-    profiles/{symbol_profile}.json
-)
-```
+This profile inherits from `default.json` and adds MACDX-specific overrides.
 
 ## Validation
 
@@ -105,6 +212,7 @@ The config loader validates:
 - Numeric ranges are valid
 - No conflicting parameters at the same level
 - Profile references exist
+- **Profile matches the symbol's strategy** (NEW!)
 
 ## Hot-Reload
 

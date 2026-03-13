@@ -25,6 +25,7 @@ from src.config_loader import (
     get_disabled_symbols,
     convert_to_legacy_format,
     _build_style_presets,
+    validate_profile_strategy_match,
 )
 
 
@@ -157,6 +158,50 @@ class TestHelperFunctions:
         """get_disabled_symbols should return a list."""
         disabled = get_disabled_symbols()
         assert isinstance(disabled, list)
+
+
+class TestProfileStrategyValidation:
+    """Tests for validate_profile_strategy_match function."""
+
+    def test_valid_profile_strategy_match_with_preloaded_config(self):
+        """Profile should match when strategy is compatible (preloaded config)."""
+        profile_config = load_profile_config("eth_conservative")
+        result = validate_profile_strategy_match("eth_conservative", "MACDX", profile_config)
+        assert result is True
+
+    def test_invalid_profile_strategy_rejected(self):
+        """Profile with different strategy should raise ValueError."""
+        profile_config = load_profile_config("eth_conservative")
+        with pytest.raises(ValueError) as exc_info:
+            validate_profile_strategy_match("eth_conservative", "SCALP", profile_config)
+        assert "belongs to strategy 'MACDX'" in str(exc_info.value)
+
+    def test_default_profile_compatible_with_any_strategy(self):
+        """Default profile (null strategy) should be compatible with any strategy."""
+        # Default profile has _strategy: null, should work with any
+        profile_config = {"_strategy": None}
+        result = validate_profile_strategy_match("default", "SCALP", profile_config)
+        assert result is True
+
+    def test_btc_aggressive_matches_scalp(self):
+        """BTC aggressive profile should match SCALP strategy."""
+        profile_config = load_profile_config("btc_aggressive")
+        result = validate_profile_strategy_match("btc_aggressive", "SCALP", profile_config)
+        assert result is True
+
+    def test_btc_aggressive_rejects_macdx(self):
+        """BTC aggressive profile should reject MACDX strategy."""
+        profile_config = load_profile_config("btc_aggressive")
+        with pytest.raises(ValueError) as exc_info:
+            validate_profile_strategy_match("btc_aggressive", "MACDX", profile_config)
+        assert "belongs to strategy 'SCALP'" in str(exc_info.value)
+
+    def test_case_insensitive_strategy_match(self):
+        """Strategy matching should be case-insensitive."""
+        profile_config = load_profile_config("eth_conservative")
+        # Test lowercase
+        result = validate_profile_strategy_match("eth_conservative", "macdx", profile_config)
+        assert result is True
 
 
 class TestLegacyConversion:

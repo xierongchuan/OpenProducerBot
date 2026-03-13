@@ -1,5 +1,6 @@
 {
-  "_description": "Default profile - uses strategy defaults with no overrides",
+  "_description": "Default profile - uses strategy defaults with no overrides. Works with any strategy.",
   "_version": "1.0.0",
-  "_inherits": null
+  "_inherits": null,
+  "_strategy": null
 }

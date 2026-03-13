@@ -193,6 +193,7 @@ class MACDXSignalGenerator:
             # Примечание: analyzer.py выводит "STRONG UP", "STRONG DOWN" (с пробелом)
             potential_score = 0
             potential_confirmations = 0
+            indicator_details = []  # Список индикаторов, которые дали баллы
 
             # Обработка None и пустых значений last_5_direction
             last_5_dir = last_5_direction if last_5_direction else "MIXED"
@@ -211,26 +212,37 @@ class MACDXSignalGenerator:
             # Рассчитываем подтверждения для потенциального бычьего сигнала
             if is_bullish_ema:
                 potential_confirmations += 2  # EMA alignment
+                indicator_details.append("EMA(9>21)")
             if is_bullish_candles:
                 potential_confirmations += 1  # Candle direction
+                indicator_details.append(f"Candles({last_5_dir})")
             if has_rsi_data and rsi <= 65:
                 potential_confirmations += 1  # RSI not overbought
+                indicator_details.append(f"RSI({rsi:.1f}<65)")
             if has_volume_data and volume_ratio >= 0.8:
                 potential_confirmations += 1  # Volume OK
+                indicator_details.append(f"Vol({volume_ratio:.1f})")
 
             # Рассчитываем подтверждения для потенциального медвежьего сигнала
             short_confirmations = 0
+            short_indicator_details = []
             if is_bearish_ema:
                 short_confirmations += 2
+                short_indicator_details.append("EMA(9<21)")
             if is_bearish_candles:
                 short_confirmations += 1
+                short_indicator_details.append(f"Candles({last_5_dir})")
             if has_rsi_data and rsi >= 35:
                 short_confirmations += 1
+                short_indicator_details.append(f"RSI({rsi:.1f}>35)")
             if has_volume_data and volume_ratio >= 0.8:
                 short_confirmations += 1
+                short_indicator_details.append(f"Vol({volume_ratio:.1f})")
 
             # Выбираем максимальное количество подтверждений
-            potential_confirmations = max(potential_confirmations, short_confirmations)
+            if short_confirmations > potential_confirmations:
+                potential_confirmations = short_confirmations
+                indicator_details = short_indicator_details
 
             # Рассчитываем score на основе подтверждений
             if potential_confirmations >= 4:
@@ -249,14 +261,20 @@ class MACDXSignalGenerator:
                 else:
                     potential_score = max(potential_score, 3)
 
-            return self._hold_result(max_score, ["No MACD crossover signal"],
+            # Формируем строку с деталями индикаторов
+            indicators_str = ", ".join(indicator_details) if indicator_details else "None"
+
+            return self._hold_result(max_score, [f"No MACD crossover (indicators: {indicators_str})"],
                                      {"macd_hist": macd_hist, "filter": "no_macd_cross",
                                       "potential_score": potential_score,
+                                      "max_potential_score": 8,
                                       "confirmations": potential_confirmations,
+                                      "max_confirmations": 6,
                                       "last_5_dir": last_5_dir,
                                       "ema_data": has_ema_data,
                                       "rsi_data": has_rsi_data,
-                                      "volume_data": has_volume_data}, regime)
+                                      "volume_data": has_volume_data,
+                                      "indicator_details": indicator_details}, regime)
 
         # === SCORE CONFIRMATIONS ===
         long_score = 0

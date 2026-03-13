@@ -460,14 +460,25 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                         details = signal_data.get("details", {})
                         # Используем potential_score из details если есть
                         hold_score = details.get('potential_score', signal_data.get('score', 0))
-                        info(f"🔧 [{symbol}] MACDX: No signal (score: {hold_score}, conf: {confirmations}) [{regime_label}]")
+                        max_score = details.get('max_potential_score', 8)
+                        max_confirmations = details.get('max_confirmations', 6)
+                        indicator_details = details.get('indicator_details', [])
+
+                        # Рассчитываем confidence на основе score
+                        confidence = hold_score / max_score if max_score > 0 else 0.0
+
+                        # Формируем строку с деталями индикаторов
+                        indicators_str = ", ".join(indicator_details) if indicator_details else "None"
+                        info(f"🔧 [{symbol}] MACDX: No signal (score: {hold_score}/{max_score}, conf: {confirmations}/{max_confirmations}) [{regime_label}] - [{indicators_str}]")
                         prediction = {
                             "symbol": symbol,
                             "action": "hold",
-                            "confidence": 0.0,
+                            "confidence": confidence,
                             "score": hold_score,
+                            "max_score": max_score,
                             "confirmations": confirmations,
-                            "reason": f"[MACDX] No signal (score: {hold_score}, confirmations: {confirmations}) [{regime_label}]",
+                            "max_confirmations": max_confirmations,
+                            "reason": f"[MACDX] No MACD cross (score: {hold_score}/{max_score}, conf: {confirmations}/{max_confirmations}) - Indicators: {indicators_str} [{regime_label}]",
                             "current_price": current_price
                         }
                     else:

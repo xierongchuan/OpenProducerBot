@@ -95,14 +95,14 @@ class MACDXSignalGenerator:
         if atr_ratio < min_atr_ratio:
             info(f"📊 [MACDX] HOLD | Low volatility (ATR: {atr_ratio:.2f})")
             return self._hold_result(max_score, [f"Low volatility (ATR {atr_ratio:.2f})"],
-                                     {"atr_ratio": atr_ratio, "filter": "volatility"}, regime)
+                                     {"atr_ratio": atr_ratio, "filter": "volatility", "confirmations": 0, "potential_score": 0}, regime)
 
         # Volume filter - can be disabled via config
         enable_volume_filter = self.rules.get("enable_volume_filter", True)
         if enable_volume_filter and volume_ratio < min_volume:
             info(f"📊 [MACDX] HOLD | Low volume ({volume_ratio:.2f}x)")
             return self._hold_result(max_score, [f"Low volume ({volume_ratio:.2f}x)"],
-                                     {"volume_ratio": volume_ratio, "filter": "volume"}, regime)
+                                     {"volume_ratio": volume_ratio, "filter": "volume", "confirmations": 0, "potential_score": 0}, regime)
 
         # === CONSECUTIVE CANDLE FILTER (Momentum Protection) ===
         # Get config for this filter
@@ -141,7 +141,7 @@ class MACDXSignalGenerator:
                 if should_block:
                     info(f"📊 [MACDX] HOLD | {block_reason}")
                     return self._hold_result(max_score, [block_reason],
-                                             {"last_5_direction": last_5_direction, "filter": "consecutive_red_momentum"}, regime)
+                                             {"last_5_direction": last_5_direction, "filter": "consecutive_red_momentum", "confirmations": 1, "potential_score": 2}, regime)
 
         # Filter 2: Counter-trend protection (EMA vs MACD)
         if enable_counter_trend_filter and ema9 > 0 and ema21 > 0:
@@ -150,12 +150,12 @@ class MACDXSignalGenerator:
             if ema9 < ema21 and ema_diff_pct > counter_trend_ema_threshold and potential_long and macd_hist > 0 and macd_hist_prev <= 0:
                 info(f"📊 [MACDX] HOLD | Counter-trend: EMA down {ema_diff_pct:.1f}%")
                 return self._hold_result(max_score, [f"Counter-trend: EMA below by {ema_diff_pct:.1f}%"],
-                                         {"ema_diff_pct": ema_diff_pct, "filter": "counter_trend"}, regime)
+                                         {"ema_diff_pct": ema_diff_pct, "filter": "counter_trend", "confirmations": 2, "potential_score": 4}, regime)
 
             if ema9 > ema21 and ema_diff_pct > counter_trend_ema_threshold and potential_short and macd_hist < 0 and macd_hist_prev >= 0:
                 info(f"📊 [MACDX] HOLD | Counter-trend: EMA up {ema_diff_pct:.1f}%")
                 return self._hold_result(max_score, [f"Counter-trend: EMA above by {ema_diff_pct:.1f}%"],
-                                         {"ema_diff_pct": ema_diff_pct, "filter": "counter_trend"}, regime)
+                                         {"ema_diff_pct": ema_diff_pct, "filter": "counter_trend", "confirmations": 2, "potential_score": 4}, regime)
 
         # === DETECT MACD CROSSOVER (PRIMARY SIGNAL) ===
         macd_cross_long = False
@@ -189,26 +189,74 @@ class MACDXSignalGenerator:
         # No MACD signal - HOLD
         if not macd_cross_long and not macd_cross_short:
             info(f"📊 [MACDX] HOLD | No MACD crossover (hist: {macd_hist:.4f})")
-            # Рассчитываем потенциальный score на основе EMA и направления свечей
+            # Рассчитываем потенциальный score на основе доступных индикаторов
             # Примечание: analyzer.py выводит "STRONG UP", "STRONG DOWN" (с пробелом)
             potential_score = 0
+            potential_confirmations = 0
 
             # Обработка None и пустых значений last_5_direction
             last_5_dir = last_5_direction if last_5_direction else "MIXED"
 
-            if ema9 > ema21 and last_5_dir in ['UP', 'STRONG UP']:
-                potential_score = 8  # Сильный бычий сигнал
-            elif ema9 > ema21 and last_5_dir == 'MIXED':
-                potential_score = 5  # Умеренный бычий
-            elif ema9 < ema21 and last_5_dir in ['DOWN', 'STRONG DOWN']:
-                potential_score = 8  # Сильный медвежий сигнал
-            elif ema9 < ema21 and last_5_dir == 'MIXED':
-                potential_score = 5  # Умеренный медвежий
-            # Для N/A и других неизвестных значений potential_score остается 0
-            # Дополнительная защита: если ema9 == ema21, тоже оставляем 0
+            # Проверяем какие индикаторы доступны и могут подтвердить направление
+            has_ema_data = ema9 > 0 and ema21 > 0
+            has_rsi_data = 0 < rsi <= 100
+            has_volume_data = volume_ratio > 0
+
+            # Определяем потенциальное направление
+            is_bullish_ema = has_ema_data and ema9 > ema21
+            is_bearish_ema = has_ema_data and ema9 < ema21
+            is_bullish_candles = last_5_dir in ['UP', 'STRONG UP']
+            is_bearish_candles = last_5_dir in ['DOWN', 'STRONG DOWN']
+
+            # Рассчитываем подтверждения для потенциального бычьего сигнала
+            if is_bullish_ema:
+                potential_confirmations += 2  # EMA alignment
+            if is_bullish_candles:
+                potential_confirmations += 1  # Candle direction
+            if has_rsi_data and rsi <= 65:
+                potential_confirmations += 1  # RSI not overbought
+            if has_volume_data and volume_ratio >= 0.8:
+                potential_confirmations += 1  # Volume OK
+
+            # Рассчитываем подтверждения для потенциального медвежьего сигнала
+            short_confirmations = 0
+            if is_bearish_ema:
+                short_confirmations += 2
+            if is_bearish_candles:
+                short_confirmations += 1
+            if has_rsi_data and rsi >= 35:
+                short_confirmations += 1
+            if has_volume_data and volume_ratio >= 0.8:
+                short_confirmations += 1
+
+            # Выбираем максимальное количество подтверждений
+            potential_confirmations = max(potential_confirmations, short_confirmations)
+
+            # Рассчитываем score на основе подтверждений
+            if potential_confirmations >= 4:
+                potential_score = 8
+            elif potential_confirmations >= 3:
+                potential_score = 6
+            elif potential_confirmations >= 2:
+                potential_score = 4
+            elif potential_confirmations >= 1:
+                potential_score = 2
+
+            # Fallback: если нет данных об EMA, но есть направление свечей
+            if not has_ema_data and (is_bullish_candles or is_bearish_candles):
+                if last_5_dir in ['STRONG_UP', 'STRONG_DOWN']:
+                    potential_score = max(potential_score, 5)
+                else:
+                    potential_score = max(potential_score, 3)
 
             return self._hold_result(max_score, ["No MACD crossover signal"],
-                                     {"macd_hist": macd_hist, "filter": "no_macd_cross", "potential_score": potential_score}, regime)
+                                     {"macd_hist": macd_hist, "filter": "no_macd_cross",
+                                      "potential_score": potential_score,
+                                      "confirmations": potential_confirmations,
+                                      "last_5_dir": last_5_dir,
+                                      "ema_data": has_ema_data,
+                                      "rsi_data": has_rsi_data,
+                                      "volume_data": has_volume_data}, regime)
 
         # === SCORE CONFIRMATIONS ===
         long_score = 0
@@ -480,6 +528,9 @@ class MACDXSignalGenerator:
         """Helper for generating HOLD result."""
         # Используем potential_score из details если есть
         actual_score = details.get('potential_score', 0)
+        # Для HOLD показываем реальное количество подтверждений (даже если MACD не кросс)
+        # Это позволяет видеть сколько индикаторов уже подтверждают направление
+        actual_confirmations = details.get('confirmations', 0)
         return {
             "signal": "HOLD",
             "score": actual_score,
@@ -487,7 +538,7 @@ class MACDXSignalGenerator:
             "quality": 0.0,
             "confidence": 0.0,
             "reasons": reasons,
-            "confirmations": 0,
+            "confirmations": actual_confirmations,
             "filters_passed": False,
             "details": details,
             "regime": regime.get("regime", "UNKNOWN") if regime else "NO_REGIME",

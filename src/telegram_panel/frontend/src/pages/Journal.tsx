@@ -8,6 +8,8 @@ interface JournalEntryData {
   time?: string;
   action?: string;
   confidence?: number;
+  score?: number;
+  confirmations?: number;
   price?: number;
   sl?: number;
   tp?: number;
@@ -24,6 +26,8 @@ interface JournalData {
     planned_tp?: number;
     reason?: string;
     confidence?: number;
+    score?: number;
+    confirmations?: number;
     time?: string;
   };
   last_close_time?: string;
@@ -226,6 +230,12 @@ export function Journal({ subscribe }: { subscribe: (type: string, cb: (data: Re
                 <div><span className="text-tg-hint">Confidence: </span><span className="text-tg-text">{((data.trade_plan.confidence || 0) * 100).toFixed(0)}%</span></div>
                 <div><span className="text-tg-hint">SL: </span><span className="text-red-400">${data.trade_plan.planned_sl}</span></div>
                 <div><span className="text-tg-hint">TP: </span><span className="text-green-400">${data.trade_plan.planned_tp}</span></div>
+                {data.trade_plan.score != null && data.trade_plan.score > 0 && (
+                  <div><span className="text-tg-hint">Score: </span><span className="text-yellow-400">{data.trade_plan.score}</span></div>
+                )}
+                {data.trade_plan.confirmations != null && data.trade_plan.confirmations > 0 && (
+                  <div><span className="text-tg-hint">Conf: </span><span className="text-blue-400">{data.trade_plan.confirmations}</span></div>
+                )}
               </div>
 
               {data.trade_plan.entry_price && data.trade_plan.planned_sl && data.trade_plan.planned_tp && (
@@ -284,6 +294,16 @@ export function Journal({ subscribe }: { subscribe: (type: string, cb: (data: Re
                         <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${actionBadgeClass(entry.action)}`}>
                           {entry.action?.toUpperCase() || 'HOLD'}
                         </span>
+                        {entry.score != null && (
+                          <span className={`text-[10px] ${entry.score > 0 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                            Score: {entry.score}
+                          </span>
+                        )}
+                        {entry.confirmations != null && (
+                          <span className={`text-[10px] ${entry.confirmations > 0 ? 'text-blue-400' : 'text-gray-500'}`}>
+                            Conf: {entry.confirmations}
+                          </span>
+                        )}
                         {entry.confidence != null && (
                           <div className="flex items-center gap-1">
                             <div className="w-8 h-1 bg-gray-700 rounded-full overflow-hidden">

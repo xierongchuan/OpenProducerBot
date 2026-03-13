@@ -6,13 +6,19 @@
     "bingx": [
       "BTCUSDT",
       "SOLUSDT",
-      "ETHUSDT"
+      "ETHUSDT",
+      "BNBUSDT",
+      "ADAUSDT",
+      "XRPUSDT"
     ]
   },
   "symbol_profiles": {
     "BTCUSDT": "default",
     "SOLUSDT": "default",
-    "ETHUSDT": "default"
+    "ETHUSDT": "default",
+    "BNBUSDT": "default",
+    "ADAUSDT": "default",
+    "XRPUSDT": "default"
   },
   "disabled_symbols": []
 }

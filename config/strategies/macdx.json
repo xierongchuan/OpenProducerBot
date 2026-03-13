@@ -1,5 +1,5 @@
 {
-  "_description": "MACDX - No-AI MACD crossover strategy with 3-5 confirmations",
+  "_description": "MACDX - MACD crossover strategy with 3-5 confirmations",
   "_version": "1.0.0",
 
   "preset": {
@@ -33,6 +33,8 @@
     "consecutive_red_filter": true,
     "min_consecutive_for_block": 3,
     "enable_counter_trend_filter": true,
-    "counter_trend_ema_threshold": 1.0
+    "counter_trend_ema_threshold": 1.0,
+    "enable_volume_filter": false
   }
 }
+

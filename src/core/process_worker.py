@@ -450,18 +450,24 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                             "symbol": symbol,
                             "action": "close",
                             "confidence": 0.9 if close_urgency == "high" else 0.75,
+                            "score": signal_data.get("score", 0),
+                            "confirmations": confirmations,
                             "reason": f"[MACDX] {close_reason}",
                             "current_price": current_price
                         }
                     elif signal == "HOLD":
                         # No signal - HOLD
                         details = signal_data.get("details", {})
-                        info(f"🔧 [{symbol}] MACDX: No signal (score: {signal_data.get('score', 0)}, conf: {confirmations}) [{regime_label}]")
+                        # Используем potential_score из details если есть
+                        hold_score = details.get('potential_score', signal_data.get('score', 0))
+                        info(f"🔧 [{symbol}] MACDX: No signal (score: {hold_score}, conf: {confirmations}) [{regime_label}]")
                         prediction = {
                             "symbol": symbol,
                             "action": "hold",
                             "confidence": 0.0,
-                            "reason": f"[MACDX] No signal (score: {signal_data.get('score', 0)}, confirmations: {confirmations}) [{regime_label}]",
+                            "score": hold_score,
+                            "confirmations": confirmations,
+                            "reason": f"[MACDX] No signal (score: {hold_score}, confirmations: {confirmations}) [{regime_label}]",
                             "current_price": current_price
                         }
                     else:
@@ -495,6 +501,8 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                                     "symbol": symbol,
                                     "action": "hold",
                                     "confidence": 0.0,
+                                    "score": signal_data.get("score", 0),
+                                    "confirmations": confirmations,
                                     "reason": f"[MACDX] Risk validation failed (R/R={sl_tp.get('risk_reward', 0):.2f})",
                                     "current_price": current_price
                                 }
@@ -533,6 +541,8 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                                 "symbol": symbol,
                                 "action": signal.lower(),
                                 "confidence": signal_confidence,
+                                "score": signal_data.get("score", 0),
+                                "confirmations": confirmations,
                                 "reason": f"[MACDX] {signal} (score: {signal_data.get('score', 0)}/{signal_data.get('max_score', 9)}, conf: {confirmations}) [{regime_label}]",
                                 "current_price": current_price,
                                 "stop_loss": sl,

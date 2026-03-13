@@ -91,6 +91,8 @@ class DecisionJournal:
             "time": datetime.now().strftime("%H:%M:%S"),
             "action": action,
             "confidence": round(prediction.get("confidence", 0), 2),
+            "score": round(prediction.get("score", 0), 1),
+            "confirmations": prediction.get("confirmations", 0),
             "price": round(current_price, 2),
             "sl": prediction.get("stop_loss"),
             "tp": prediction.get("take_profit"),
@@ -113,6 +115,8 @@ class DecisionJournal:
             "planned_tp": prediction.get("take_profit"),
             "reason": prediction.get("reason", ""),
             "confidence": prediction.get("confidence", 0),
+            "score": prediction.get("score", 0),
+            "confirmations": prediction.get("confirmations", 0),
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
         self._save(symbol)

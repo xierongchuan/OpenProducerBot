@@ -31,12 +31,19 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     Рассчитывает MACD (Moving Average Convergence Divergence)
     Returns: (macd_line, signal_line, histogram, histogram_prev)
     """
+    # Debug: log prices count and sample
     if len(prices) < slow + signal:
+        from src.utils.logger import debug
+        debug(f"[MACD] Not enough data: {len(prices)} prices, need {slow + signal}")
         return 0, 0, 0, 0
 
     ema_fast = calculate_ema(prices, fast)
     ema_slow = calculate_ema(prices, slow)
     macd_line = ema_fast - ema_slow
+
+    # Debug: log EMA values
+    from src.utils.logger import debug
+    debug(f"[MACD] Prices: {len(prices)}, EMA_fast: {ema_fast:.2f}, EMA_slow: {ema_slow:.2f}, MACD: {macd_line:.4f}")
 
     # Calculate MACD history for signal line
     macd_history = []
@@ -524,9 +531,20 @@ def analyze_symbol(symbol, position=None, decision_context=""):
     Стратегия: Momentum Breakout с трендовым фильтром
     Таймфрейм: 3 минуты - несколько часов
     """
+    # Debug: log data loading
+    from src.utils.logger import debug, warning
+
     # Загружаем данные
-    with open(f"{DATA_DIR}/prices/{get_filename(symbol)}.json") as f:
+    price_file = f"{DATA_DIR}/prices/{get_filename(symbol)}.json"
+    with open(price_file) as f:
         prices = json.load(f)
+
+    debug(f"[Analyzer] Loaded {len(prices)} candles for {symbol}")
+
+    # Debug: show last price
+    if prices:
+        last_candle = prices[-1]
+        debug(f"[Analyzer] Last candle: close={last_candle.get('closePrice')}, volume={last_candle.get('volume')}")
 
     with open(f"{DATA_DIR}/news/{get_filename(symbol)}.json") as f:
         news = json.load(f)
@@ -1092,6 +1110,7 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         "volume_ratio": volume_ratio,
         "global_trend": global_trend,
         "local_trend": local_trend,
+        "last_5_direction": last_5_direction,
         "has_position": bool(position),
         "position": position,
         "prompt": prompt.strip(),

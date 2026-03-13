@@ -39,6 +39,11 @@ class MACDXSignalGenerator:
         Returns:
             dict with signal, score, quality, and details
         """
+        # Debug: log received analysis data
+        from src.utils.logger import debug, warning
+        debug(f"[MACDX] Analysis keys: {list(analysis.keys())}")
+        debug(f"[MACDX] macd_line={analysis.get('macd_line')}, macd_hist={analysis.get('macd_hist')}")
+
         # === EXTRACT DATA ===
         current_price = analysis.get("current_price", 0)
         rsi = analysis.get("rsi", 50)
@@ -92,7 +97,9 @@ class MACDXSignalGenerator:
             return self._hold_result(max_score, [f"Low volatility (ATR {atr_ratio:.2f})"],
                                      {"atr_ratio": atr_ratio, "filter": "volatility"}, regime)
 
-        if volume_ratio < min_volume:
+        # Volume filter - can be disabled via config
+        enable_volume_filter = self.rules.get("enable_volume_filter", True)
+        if enable_volume_filter and volume_ratio < min_volume:
             info(f"📊 [MACDX] HOLD | Low volume ({volume_ratio:.2f}x)")
             return self._hold_result(max_score, [f"Low volume ({volume_ratio:.2f}x)"],
                                      {"volume_ratio": volume_ratio, "filter": "volume"}, regime)
@@ -166,11 +173,37 @@ class MACDXSignalGenerator:
             if macd_hist_prev >= 0 or macd_hist < macd_hist_prev:
                 macd_cross_short = True
 
+        # Fallback: If MACD is zero/unavailable, use EMA crossover
+        # Примечание: analyzer.py выводит "STRONG UP", "STRONG DOWN" (с пробелом)
+        if macd_hist == 0 and ema9 > 0 and ema21 > 0:
+            debug(f"[MACDX] EMA fallback check: macd_hist={macd_hist}, ema9={ema9}, ema21={ema21}, last_5={analysis.get('last_5_direction', 'N/A')}")
+            if ema9 > ema21 and (macd_hist_prev < 0 or analysis.get('last_5_direction', '') in ['UP', 'STRONG UP']):
+                macd_cross_long = True
+                debug("[MACDX] Using EMA fallback: LONG signal")
+            elif ema9 < ema21 and (macd_hist_prev > 0 or analysis.get('last_5_direction', '') in ['DOWN', 'STRONG DOWN']):
+                macd_cross_short = True
+                debug("[MACDX] Using EMA fallback: SHORT signal")
+        elif ema9 <= 0 or ema21 <= 0:
+            debug(f"[MACDX] EMA values unavailable: ema9={ema9}, ema21={ema21}")
+
         # No MACD signal - HOLD
         if not macd_cross_long and not macd_cross_short:
             info(f"📊 [MACDX] HOLD | No MACD crossover (hist: {macd_hist:.4f})")
+            # Рассчитываем потенциальный score на основе EMA и направления свечей
+            # Примечание: analyzer.py выводит "STRONG UP", "STRONG DOWN" (с пробелом)
+            potential_score = 0
+            if ema9 > ema21 and last_5_direction in ['UP', 'STRONG UP']:
+                potential_score = 8  # Сильный бычий сигнал
+            elif ema9 > ema21 and last_5_direction == 'MIXED':
+                potential_score = 5  # Умеренный бычий
+            elif ema9 < ema21 and last_5_direction in ['DOWN', 'STRONG DOWN']:
+                potential_score = 8  # Сильный медвежий сигнал
+            elif ema9 < ema21 and last_5_direction == 'MIXED':
+                potential_score = 5  # Умеренный медвежий
+            # Для N/A и других неизвестных значений potential_score остается 0
+
             return self._hold_result(max_score, ["No MACD crossover signal"],
-                                     {"macd_hist": macd_hist, "filter": "no_macd_cross"}, regime)
+                                     {"macd_hist": macd_hist, "filter": "no_macd_cross", "potential_score": potential_score}, regime)
 
         # === SCORE CONFIRMATIONS ===
         long_score = 0
@@ -440,9 +473,11 @@ class MACDXSignalGenerator:
 
     def _hold_result(self, max_score: int, reasons: list, details: dict, regime: dict = None) -> dict:
         """Helper for generating HOLD result."""
+        # Используем potential_score из details если есть
+        actual_score = details.get('potential_score', 0)
         return {
             "signal": "HOLD",
-            "score": 0,
+            "score": actual_score,
             "max_score": max_score,
             "quality": 0.0,
             "confidence": 0.0,

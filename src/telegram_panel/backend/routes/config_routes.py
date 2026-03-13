@@ -547,13 +547,13 @@ async def add_active_symbol(request: Request, _user: dict = Depends(get_current_
 
     symbols = active.get("symbols", {})
     exchange_symbols = symbols.get(exchange, [])
-    
+
     symbol_upper = symbol.upper()
     if symbol_upper not in exchange_symbols:
         exchange_symbols.append(symbol_upper)
         symbols[exchange] = exchange_symbols
         active["symbols"] = symbols
-        
+
         try:
             _save_json(active_path, active)
             logger.info("Symbol %s added to %s", symbol_upper, exchange)
@@ -574,13 +574,13 @@ async def remove_active_symbol(symbol: str, exchange: str = "bingx", _user: dict
 
     symbols = active.get("symbols", {})
     exchange_symbols = symbols.get(exchange, [])
-    
+
     symbol_upper = symbol.upper()
     if symbol_upper in exchange_symbols:
         exchange_symbols.remove(symbol_upper)
         symbols[exchange] = exchange_symbols
         active["symbols"] = symbols
-        
+
         try:
             _save_json(active_path, active)
             logger.info("Symbol %s removed from %s", symbol_upper, exchange)
@@ -805,6 +805,208 @@ async def delete_profile(name: str, _user: dict = Depends(get_current_user)) -> 
         raise HTTPException(status_code=500, detail=f"Failed to delete: {e}")
 
     return {"status": "ok"}
+
+
+# ============================================================================
+# Profile Clone, Auto-create, and Usage
+# ============================================================================
+
+@router.post("/profiles/{name}/clone")
+async def clone_profile(
+    name: str,
+    request: Request,
+    _user: dict = Depends(get_current_user)
+) -> dict:
+    """Clone a profile with a new name."""
+    if not _use_new_config_system():
+        raise HTTPException(status_code=400, detail="New config system not available")
+
+    # Get source profile
+    source_path = PROFILES_DIR / f"{name}.json"
+    if not source_path.exists():
+        raise HTTPException(status_code=404, detail=f"Source profile not found: {name}")
+
+    try:
+        body = await request.body()
+        data = json.loads(body)
+        new_name = data.get("new_name")
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    if not new_name:
+        raise HTTPException(status_code=400, detail="new_name is required")
+
+    if new_name == "default":
+        raise HTTPException(status_code=400, detail="Cannot clone to 'default'")
+
+    # Check if target already exists
+    target_path = PROFILES_DIR / f"{new_name}.json"
+    if target_path.exists():
+        raise HTTPException(status_code=400, detail=f"Profile already exists: {new_name}")
+
+    # Load and clone
+    source = _load_json(source_path)
+    source["_description"] = f"Cloned from '{name}'"
+
+    try:
+        _save_json(target_path, source)
+        logger.info("Profile %s cloned to %s", name, new_name)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save: {e}")
+
+    return {"status": "ok", "profile": new_name, "source": name}
+
+
+@router.post("/profiles/auto-create")
+async def auto_create_profile(
+    request: Request,
+    _user: dict = Depends(get_current_user)
+) -> dict:
+    """
+    Auto-create profile from strategy settings.
+
+    When user modifies strategy settings via UI, we create a profile
+    and optionally switch symbols from 'default' to this new profile.
+    """
+    if not _use_new_config_system():
+        raise HTTPException(status_code=400, detail="New config system not available")
+
+    try:
+        body = await request.body()
+        data = json.loads(body)
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    profile_name = data.get("name")  # Optional: user-specified name
+    settings = data.get("settings", {})  # Profile settings to apply
+    strategy = data.get("strategy")  # Required: strategy type
+    switch_from_default = data.get("switch_from_default", True)
+
+    if not strategy:
+        raise HTTPException(status_code=400, detail="strategy is required")
+
+    # Generate profile name if not provided
+    if not profile_name:
+        import time
+        profile_name = f"auto-{strategy.lower()}-{int(time.time())}"
+
+    # Check if profile already exists
+    profile_path = PROFILES_DIR / f"{profile_name}.json"
+    is_update = profile_path.exists()
+
+    # Validate settings against strategy schema if strategy config exists
+    strategy_path = STRATEGIES_DIR / f"{strategy.lower()}.json"
+    if strategy_path.exists():
+        strategy_config = _load_json(strategy_path)
+        # Get allowed keys from strategy config
+        allowed_keys = set(strategy_config.get("properties", {}).keys())
+        if allowed_keys:
+            # Validate that settings only contain valid keys
+            invalid_keys = set(settings.keys()) - allowed_keys
+            if invalid_keys:
+                logger.warning("Profile %s has invalid keys for strategy %s: %s",
+                               profile_name, strategy, list(invalid_keys))
+
+    # Build profile config
+    profile = {
+        "_description": f"{'Updated' if is_update else 'Auto-created'} profile for {strategy}",
+        "_version": "1.0.0",
+        "_inherits": "default",
+        "_strategy": strategy,
+        **settings  # Apply user settings
+    }
+
+    try:
+        _save_json(profile_path, profile)
+        logger.info("Profile %s %s", profile_name, "updated" if is_update else "created")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save profile: {e}")
+
+    # Switch symbols from default to new profile
+    switched_symbols = []
+    previously_using_default = False
+
+    if switch_from_default:
+        active_path = CONFIG_DIR / "active.json"
+        active = _load_json(active_path)
+
+        symbol_profiles = active.get("symbol_profiles", {})
+        symbols_to_switch = []
+
+        # Find symbols using 'default'
+        for symbol, prof in symbol_profiles.items():
+            if prof == "default":
+                symbols_to_switch.append(symbol)
+
+        # Also check active symbols without explicit profile (implicitly default)
+        symbols_config = active.get("symbols", {})
+        all_active_symbols = []
+        for exchange_symbols in symbols_config.values():
+            all_active_symbols.extend(exchange_symbols)
+
+        for symbol in all_active_symbols:
+            if symbol not in symbol_profiles:  # No explicit profile = default
+                symbols_to_switch.append(symbol)
+                previously_using_default = True
+
+        if symbols_to_switch:
+            switched_symbols = list(set(symbols_to_switch))
+            for symbol in switched_symbols:
+                symbol_profiles[symbol] = profile_name
+            active["symbol_profiles"] = symbol_profiles
+
+            try:
+                _save_json(active_path, active)
+                logger.info("Switched %d symbols to profile %s", len(switched_symbols), profile_name)
+            except OSError as e:
+                # Profile was created, but symbol switch failed
+                logger.warning("Failed to switch symbols: %s", e)
+
+    return {
+        "status": "ok",
+        "profile": profile_name,
+        "switchedSymbols": switched_symbols,
+        "previouslyUsingDefault": previously_using_default or len(switched_symbols) > 0,
+        "isUpdate": is_update
+    }
+
+
+@router.get("/profiles/{name}/usage")
+async def get_profile_usage(
+    name: str,
+    _user: dict = Depends(get_current_user)
+) -> dict:
+    """Get list of symbols using a specific profile."""
+    if not _use_new_config_system():
+        raise HTTPException(status_code=400, detail="New config system not available")
+
+    profile_path = PROFILES_DIR / f"{name}.json"
+    if not profile_path.exists():
+        raise HTTPException(status_code=404, detail=f"Profile not found: {name}")
+
+    active = _load_json(CONFIG_DIR / "active.json")
+    symbol_profiles = active.get("symbol_profiles", {})
+
+    # Find all symbols using this profile
+    symbols = [s for s, p in symbol_profiles.items() if p == name]
+
+    # Also check implicit default
+    if name == "default":
+        symbols_config = active.get("symbols", {})
+        all_active_symbols = []
+        for exchange_symbols in symbols_config.values():
+            all_active_symbols.extend(exchange_symbols)
+
+        for symbol in all_active_symbols:
+            if symbol not in symbol_profiles:
+                symbols.append(symbol)
+
+    return {
+        "profile": name,
+        "symbols": sorted(set(symbols)),
+        "isUsed": len(symbols) > 0,
+        "usageCount": len(symbols)
+    }
 
 
 # ============================================================================

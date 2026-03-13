@@ -172,8 +172,10 @@ export interface StrategiesResponse {
 
 export interface ProfileInfo {
   name: string;
-  description: string;
-  inherits: string | null;
+  description?: string;
+  inherits?: string | null;
+  _description?: string;
+  _strategy?: string | null;
   preset?: Record<string, unknown>;
   position?: Record<string, unknown>;
   signal_rules?: Record<string, unknown>;
@@ -284,6 +286,52 @@ export function setSymbolProfile(symbol: string, profile: string) {
   return fetchAPI<{ status: string; symbol: string; profile: string }>(`/api/config/symbol-profiles/${encodeURIComponent(symbol)}`, {
     method: 'PUT',
     body: JSON.stringify({ profile }),
+  });
+}
+
+export interface ProfileUsageResponse {
+  profile: string;
+  symbols: string[];
+  isUsed: boolean;
+  usageCount: number;
+}
+
+export function getProfileUsage(profileName: string) {
+  return fetchAPI<ProfileUsageResponse>(`/api/config/profiles/${encodeURIComponent(profileName)}/usage`);
+}
+
+export interface CloneProfileResponse {
+  status: string;
+  profile: string;
+  source: string;
+}
+
+export function cloneProfile(sourceName: string, newName: string) {
+  return fetchAPI<CloneProfileResponse>(`/api/config/profiles/${encodeURIComponent(sourceName)}/clone`, {
+    method: 'POST',
+    body: JSON.stringify({ new_name: newName }),
+  });
+}
+
+export interface AutoCreateProfileRequest {
+  name?: string;
+  settings: Record<string, unknown>;
+  strategy: string;
+  switch_from_default?: boolean;
+}
+
+export interface AutoCreateProfileResponse {
+  status: string;
+  profile: string;
+  switchedSymbols: string[];
+  previouslyUsingDefault: boolean;
+  isUpdate: boolean;
+}
+
+export function autoCreateProfile(data: AutoCreateProfileRequest) {
+  return fetchAPI<AutoCreateProfileResponse>('/api/config/profiles/auto-create', {
+    method: 'POST',
+    body: JSON.stringify(data),
   });
 }
 

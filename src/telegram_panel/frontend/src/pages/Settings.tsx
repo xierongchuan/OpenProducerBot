@@ -13,6 +13,9 @@ import {
   updateBaseConfig,
   addSymbol,
   removeSymbol,
+  deleteProfile,
+  cloneProfile,
+  getProfileUsage,
   type ConfigSystemInfo,
   type ActiveConfig,
   type TradingConfig,
@@ -21,6 +24,7 @@ import {
   type ProfilesResponse,
   type SymbolProfilesResponse,
 } from '../api/client';
+import { ProfileCard } from '../components/ProfileCard';
 import { Spinner } from '../components/Spinner';
 
 type Tab = 'strategy' | 'trading' | 'infrastructure' | 'profiles' | 'symbols';
@@ -223,7 +227,7 @@ export function Settings() {
       )}
 
       {tab === 'profiles' && profiles && (
-        <ProfilesTab profiles={profiles} />
+        <ProfilesTab profiles={profiles} onRefresh={fetchAll} />
       )}
 
       {tab === 'symbols' && symbolProfiles && profiles && (
@@ -709,10 +713,76 @@ function InfrastructureTab({
 
 function ProfilesTab({
   profiles,
+  onRefresh,
 }: {
   profiles: ProfilesResponse;
+  onRefresh: () => void;
 }) {
-  const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
+  const [profileUsages, setProfileUsages] = useState<Record<string, { isUsed: boolean; usageCount: number }>>({});
+  const [cloneModal, setCloneModal] = useState<{ open: boolean; sourceName: string }>({ open: false, sourceName: '' });
+  const [cloneName, setCloneName] = useState('');
+  const [cloneLoading, setCloneLoading] = useState(false);
+
+  // Load profile usages in parallel
+  useEffect(() => {
+    const loadUsages = async () => {
+      const profileNames = profiles.available.filter(name => name !== 'default');
+
+      const promises = profileNames.map(async (name): Promise<[string, { isUsed: boolean; usageCount: number }]> => {
+        try {
+          const usage = await getProfileUsage(name);
+          return [name, { isUsed: usage.isUsed, usageCount: usage.usageCount }];
+        } catch {
+          return [name, { isUsed: false, usageCount: 0 }];
+        }
+      });
+
+      const results = await Promise.all(promises);
+      setProfileUsages(Object.fromEntries(results));
+    };
+    loadUsages();
+  }, [profiles.available]);
+
+  const handleEdit = async (name: string) => {
+    // TODO: Open profile editor modal
+    console.log('Edit profile:', name);
+  };
+
+  const handleClone = async (name: string) => {
+    setCloneModal({ open: true, sourceName: name });
+    setCloneName('');
+  };
+
+  const handleCloneSubmit = async () => {
+    if (!cloneName.trim()) return;
+    setCloneLoading(true);
+    try {
+      await cloneProfile(cloneModal.sourceName, cloneName.trim());
+      setCloneModal({ open: false, sourceName: '' });
+      onRefresh();
+    } catch (err) {
+      console.error('Failed to clone profile:', err);
+    } finally {
+      setCloneLoading(false);
+    }
+  };
+
+  const handleDelete = async (name: string) => {
+    const usage = profileUsages[name];
+    if (usage?.isUsed) {
+      alert('Cannot delete: profile is in use by symbols');
+      return;
+    }
+
+    if (!confirm(`Delete profile "${name}"?`)) return;
+
+    try {
+      await deleteProfile(name);
+      onRefresh();
+    } catch (err) {
+      console.error('Failed to delete profile:', err);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -720,73 +790,18 @@ function ProfilesTab({
         <div className="flex flex-col gap-2">
           {profiles.available.map((name) => {
             const profile = profiles.profiles[name];
-            const isSelected = name === selectedProfile;
+            const usage = profileUsages[name];
             return (
-              <button
+              <ProfileCard
                 key={name}
-                onClick={() => setSelectedProfile(isSelected ? null : name)}
-                className={`flex flex-col items-start p-3 rounded-xl border transition-all ${
-                  isSelected
-                    ? 'border-tg-button bg-tg-button/10'
-                    : 'border-white/10 bg-tg-bg hover:border-white/20'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className={`text-sm font-medium ${isSelected ? 'text-tg-button' : 'text-tg-text'}`}>
-                    {name}
-                  </span>
-                  {profile.inherits && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-tg-section-bg text-tg-hint">
-                      {profile.inherits}
-                    </span>
-                  )}
-                </div>
-                <span className="text-[10px] text-tg-hint mt-1 text-left">
-                  {profile.description || 'No description'}
-                </span>
-
-                {/* Expanded Details */}
-                {isSelected && (
-                  <div className="mt-3 pt-3 border-t border-white/10 w-full text-left">
-                    {profile.preset && Object.keys(profile.preset).length > 0 && (
-                      <div className="mb-2">
-                        <span className="text-[10px] text-tg-hint uppercase">Preset</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {Object.entries(profile.preset).map(([k, v]) => (
-                            <span key={k} className="text-[10px] px-1.5 py-0.5 rounded bg-tg-section-bg text-tg-text">
-                              {k}: {String(v)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {profile.position && Object.keys(profile.position).length > 0 && (
-                      <div className="mb-2">
-                        <span className="text-[10px] text-tg-hint uppercase">Position</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {Object.entries(profile.position).map(([k, v]) => (
-                            <span key={k} className="text-[10px] px-1.5 py-0.5 rounded bg-tg-section-bg text-tg-text">
-                              {k}: {String(v)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {profile.signal_rules && Object.keys(profile.signal_rules).length > 0 && (
-                      <div>
-                        <span className="text-[10px] text-tg-hint uppercase">Signal Rules</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {Object.entries(profile.signal_rules).map(([k, v]) => (
-                            <span key={k} className="text-[10px] px-1.5 py-0.5 rounded bg-tg-section-bg text-tg-text">
-                              {k}: {String(v)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </button>
+                name={name}
+                profile={profile}
+                isUsed={usage?.isUsed ?? false}
+                usageCount={usage?.usageCount ?? 0}
+                onEdit={() => handleEdit(name)}
+                onClone={() => handleClone(name)}
+                onDelete={() => handleDelete(name)}
+              />
             );
           })}
         </div>
@@ -796,6 +811,42 @@ function ProfilesTab({
       <div className="text-xs text-tg-hint px-3 py-2 rounded-lg bg-tg-section-bg">
         Profiles allow per-symbol configuration overrides. Assign profiles to symbols in the Symbols tab.
       </div>
+
+      {/* Clone Profile Modal */}
+      {cloneModal.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-tg-section-bg rounded-xl p-4 w-[280px] shadow-xl">
+            <h3 className="text-sm font-medium text-tg-text mb-3">Clone Profile</h3>
+            <p className="text-xs text-tg-hint mb-3">
+              Clone "{cloneModal.sourceName}" to a new name:
+            </p>
+            <input
+              type="text"
+              value={cloneName}
+              onChange={(e) => setCloneName(e.target.value)}
+              placeholder="Enter new profile name"
+              className="w-full px-3 py-2 rounded-lg bg-tg-bg border border-white/10 text-tg-text text-sm mb-3 focus:outline-none focus:border-tg-button"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleCloneSubmit()}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCloneModal({ open: false, sourceName: '' })}
+                className="flex-1 py-2 rounded-lg bg-tg-bg text-tg-text text-sm font-medium hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCloneSubmit}
+                disabled={!cloneName.trim() || cloneLoading}
+                className="flex-1 py-2 rounded-lg bg-tg-button text-white text-sm font-medium hover:bg-tg-button/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {cloneLoading ? 'Cloning...' : 'Clone'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

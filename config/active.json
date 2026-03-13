@@ -10,9 +10,9 @@
     ]
   },
   "symbol_profiles": {
-    "BTCUSDT": "default",
+    "BTCUSDT": "btc_aggressive",
     "SOLUSDT": "default",
-    "ETHUSDT": "eth_conservative"
+    "ETHUSDT": "default"
   },
   "disabled_symbols": []
 }

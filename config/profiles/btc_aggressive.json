@@ -9,7 +9,7 @@
     "atr_tp_mult": 2.5
   },
   "position": {
-    "size_percent": 15
+    "size_percent": 30
   },
   "signal_rules": {
     "min_score_for_signal": 3

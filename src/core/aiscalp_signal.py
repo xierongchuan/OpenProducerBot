@@ -459,8 +459,13 @@ class AiScalpSignalGenerator:
         if not position:
             return {"should_close": False, "reason": "No position", "urgency": "low"}
 
-        pos_type = position.get("type", "").upper()
-        entry_price = float(position.get("entry", position.get("avgPrice", 0)))
+        # Support both dict and Position dataclass
+        if hasattr(position, 'entry_price'):  # Position dataclass
+            pos_type = "BUY" if position.is_long else "SELL"
+            entry_price = float(position.entry_price)
+        else:  # dict format
+            pos_type = position.get("type", "").upper()
+            entry_price = float(position.get("entry", position.get("avgPrice", 0)))
         current_price = analysis.get("current_price", 0)
         rsi = analysis.get("rsi", 50)
         macd_hist = analysis.get("macd_hist", 0)

@@ -20,6 +20,7 @@ from multiprocessing import Manager
 import websocket
 
 from src.utils.logger import info, warning, error
+from src.config import BINGX_API_URL
 
 
 class WebSocketDataProvider:
@@ -140,7 +141,7 @@ class WebSocketDataProvider:
         cache_key = self._normalize_symbol(symbol)
         formatted_symbol = cache_key  # Already in BTC-USDT format
 
-        market_url = "https://open-api.bingx.com/openApi/swap/v3/quote/klines"
+        market_url = f"{BINGX_API_URL}/openApi/swap/v3/quote/klines"
         params = {
             "symbol": formatted_symbol,
             "interval": self._interval,
@@ -442,6 +443,7 @@ def get_klines_from_shared_cache(symbol: str, limit: int = 288) -> List[dict]:
 
 def is_cache_ready(symbol: str) -> bool:
     """Check if symbol has data in shared cache."""
+    print(f"[is_cache_ready] _shared_ready is None: {_shared_ready is None}")  # DEBUG
     if _shared_ready is None:
         return False
 
@@ -452,6 +454,7 @@ def is_cache_ready(symbol: str) -> bool:
     else:
         cache_key = symbol
 
+    print(f"[is_cache_ready] cache_key: {cache_key}, value: {_shared_ready.get(cache_key, False)}")  # DEBUG
     return _shared_ready.get(cache_key, False)
 
 

@@ -674,10 +674,21 @@ def analyze_symbol(symbol, position=None, decision_context=""):
     pnl_context = ""
 
     if position:
-        pnl_usdt = float(position['pnl'])
-        size_coin = float(position['size'])
-        entry_price = float(position['entry'])
-        pos_type = position['type'].upper()
+        # Support both dict and Position dataclass
+        if hasattr(position, 'unrealized_pnl'):  # Position dataclass
+            pnl_usdt = float(position.unrealized_pnl)
+            size_coin = float(position.size)
+            entry_price = float(position.entry_price)
+            pos_type = "LONG" if position.is_long else "SHORT"
+            sl_price = position.liquidation_price or 0  # Use liquidation as reference
+            tp_price = 0
+        else:  # dict format
+            pnl_usdt = float(position.get('pnl', 0))
+            size_coin = float(position.get('size', 0))
+            entry_price = float(position.get('entry', 0))
+            pos_type = position.get('type', 'LONG').upper()
+            sl_price = float(position.get('sl', 0))
+            tp_price = float(position.get('tp', 0))
 
         # Расчёт PnL метрик
         position_value = size_coin * entry_price
@@ -688,10 +699,6 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         roe_percent = (pnl_usdt / margin * 100) if margin > 0 else 0
 
         pnl_emoji = "🟢" if pnl_usdt >= 0 else "🔴"
-
-        # SL/TP Info
-        sl_price = float(position.get('sl', 0))
-        tp_price = float(position.get('tp', 0))
 
         sl_info = f"{sl_price:.2f}" if sl_price > 0 else "N/A"
         tp_info = f"{tp_price:.2f}" if tp_price > 0 else "N/A"

@@ -238,20 +238,37 @@ class BingXClient(ExchangeClient):
         Получает исторические данные свечей.
         Сначала пробует WebSocket кэш, потом REST API.
         """
+        print(f"[DEBUG get_kline_data] START for {symbol}")  # Force stdout
+
         # 1. Try WebSocket shared cache first
+        ws_cache_result = None
         try:
             from src.exchanges.ws_data_provider import is_cache_ready, get_klines_from_shared_cache
 
-            if is_cache_ready(symbol):
+            # Debug: check if cache is accessible
+            from src.exchanges.ws_data_provider import _shared_cache, _shared_ready
+            debug_msg = f"[KLINE] _shared_cache={type(_shared_cache)}, _shared_ready={type(_shared_ready)}"
+            print(debug_msg)  # Force stdout
+
+            cache_ready = is_cache_ready(symbol)
+            print(f"[KLINE] Cache ready for {symbol}: {cache_ready}")  # Force stdout
+
+            if cache_ready:
                 cached = get_klines_from_shared_cache(symbol, limit)
+                print(f"[KLINE] Got {len(cached)} candles from cache")  # Force stdout
                 if len(cached) >= limit * 0.8:  # 80% data available
-                    return cached
-        except ImportError:
-            pass  # WS provider not available
+                    ws_cache_result = cached
+        except ImportError as ie:
+            print(f"[KLINE] ImportError: {ie}")  # Force stdout
         except Exception as e:
-            warning(f"⚠️ WS cache error for {symbol}: {e}")
+            print(f"[KLINE] Exception: {e}")  # Force stdout
+
+        if ws_cache_result is not None:
+            print(f"[KLINE] Returning {len(ws_cache_result)} from cache")  # Force stdout
+            return ws_cache_result
 
         # 2. Fallback to REST API
+        print(f"[KLINE] Falling back to REST for {symbol}")  # Force stdout
         return self._fetch_klines_rest(symbol, interval, limit)
 
     def _fetch_klines_rest(self, symbol, interval="5m", limit=288):
@@ -264,7 +281,7 @@ class BingXClient(ExchangeClient):
         else:
             formatted_symbol = symbol.replace("/", "-")
 
-        market_url = "https://open-api.bingx.com/openApi/swap/v3/quote/klines"
+        market_url = f"{self.base_url}/openApi/swap/v3/quote/klines"
 
         # Map verbose interval constants to BingX format
         interval_map = {
@@ -732,8 +749,8 @@ class BingXClient(ExchangeClient):
         """
         formatted_symbol = self._format_symbol(symbol)
 
-        # Публичный endpoint - используем основной URL
-        market_url = "https://open-api.bingx.com/openApi/swap/v2/quote/depth"
+        # Публичный endpoint
+        market_url = f"{self.base_url}/openApi/swap/v2/quote/depth"
 
         params = {
             "symbol": formatted_symbol,
@@ -786,7 +803,7 @@ class BingXClient(ExchangeClient):
         formatted_symbol = self._format_symbol(symbol)
 
         # Публичный endpoint
-        market_url = "https://open-api.bingx.com/openApi/swap/v2/quote/ticker"
+        market_url = f"{self.base_url}/openApi/swap/v2/quote/ticker"
 
         params = {"symbol": formatted_symbol}
 
@@ -900,7 +917,7 @@ class BingXClient(ExchangeClient):
 
         try:
             formatted_symbol = self._format_symbol(symbol)
-            market_url = "https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex"
+            market_url = f"{self.base_url}/openApi/swap/v2/quote/premiumIndex"
             params = {"symbol": formatted_symbol}
 
             max_retries = 3

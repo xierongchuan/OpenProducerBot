@@ -295,7 +295,11 @@ def execute_prediction(prediction, all_positions=None):
 
     # 2. MANAGE EXISTING POSITION
     else:
-        deal_id = current_pos["dealId"]
+        # Support both dict and Position dataclass
+        if hasattr(current_pos, 'position_id'):
+            deal_id = current_pos.position_id
+        else:
+            deal_id = current_pos.get("dealId", "")
 
         # CLOSE / PARTIAL CLOSE
         if prediction["action"] in ["close", "close_partial"] and prediction["confidence"] >= confidence_threshold:
@@ -318,8 +322,12 @@ def execute_prediction(prediction, all_positions=None):
 
             if ai_sl or ai_tp:
                 # BingXClient needs positionSide (LONG/SHORT)
-                pos_type = current_pos["type"].upper() # BUY/SELL
-                pos_side = "LONG" if pos_type == "BUY" else "SHORT"
+                # Support both dict and Position dataclass
+                if hasattr(current_pos, 'is_long'):
+                    pos_side = "LONG" if current_pos.is_long else "SHORT"
+                else:
+                    pos_type = current_pos.get("type", "").upper() # BUY/SELL
+                    pos_side = "LONG" if pos_type == "BUY" else "SHORT"
 
                 # Check if SL/TP actually changed significantly to avoid spam
                 # (Simple check, can be improved)
@@ -357,9 +365,15 @@ def main(predictions):
         pos_details = []
         for sym, pos_list in positions.items():
             for p in pos_list:
-                side = p.get('type', '?').upper()
-                size = p.get('size', 0)
-                pnl = p.get('pnl', 0)
+                # Support both dict and Position dataclass
+                if hasattr(p, 'side'):
+                    side = "LONG" if p.is_long else "SHORT"
+                    size = float(p.size)
+                    pnl = float(p.unrealized_pnl)
+                else:
+                    side = p.get('type', '?').upper()
+                    size = p.get('size', 0)
+                    pnl = p.get('pnl', 0)
                 pos_details.append(f"{sym} ({side} {size} | PnL: {pnl})")
 
         info(f"📊 Открытые позиции: {', '.join(pos_details)}")
@@ -393,7 +407,11 @@ def main(predictions):
             # Если позиция есть, проверяем сигналы на выход
             if pred["action"] in ["close", "close_partial"] and pred["confidence"] >= confidence_threshold:
                 current_pos = positions[symbol][0] # Берем первую (обычно единственную)
-                deal_id = current_pos["dealId"]
+                # Support both dict and Position dataclass
+                if hasattr(current_pos, 'position_id'):
+                    deal_id = current_pos.position_id
+                else:
+                    deal_id = current_pos.get("dealId", "")
                 percentage = pred.get("percentage", 1.0)
 
                 if pred["action"] == "close":
@@ -427,8 +445,12 @@ def main(predictions):
                     current_pos = positions[symbol][0]
                     # Determine position side for set_sl_tp
                     # BingXClient needs positionSide (LONG/SHORT)
-                    pos_type = current_pos["type"].upper() # BUY/SELL
-                    pos_side = "LONG" if pos_type == "BUY" else "SHORT"
+                    # Support both dict and Position dataclass
+                    if hasattr(current_pos, 'is_long'):
+                        pos_side = "LONG" if current_pos.is_long else "SHORT"
+                    else:
+                        pos_type = current_pos.get("type", "").upper() # BUY/SELL
+                        pos_side = "LONG" if pos_type == "BUY" else "SHORT"
 
                     info(f"🔄 {symbol}: Updating SL/TP for existing position (SL: {ai_sl}, TP: {ai_tp})")
                     try:

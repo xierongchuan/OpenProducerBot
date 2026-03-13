@@ -178,17 +178,42 @@ class TradeTracker:
         """Register a new trade"""
         from src.config import TRADING_FEE_TAKER, LEVERAGE
 
-        entry_price = float(real_position.get("entry", real_position.get("avgPrice", 0)))
-        amount = float(real_position.get("size", real_position.get("amount", 0)))
+        # Support both dict and Position dataclass (list from new BingX client)
+        if isinstance(real_position, list):
+            # New format: list of Position objects
+            if real_position:
+                pos = real_position[0]  # Take first position
+                if hasattr(pos, 'entry_price'):  # Position dataclass
+                    entry_price = float(pos.entry_price)
+                    amount = float(pos.size)
+                    side = "LONG" if pos.is_long else "SHORT"
+                    leverage = pos.leverage or LEVERAGE
+                    position_id = pos.position_id
+                else:  # dict format
+                    entry_price = float(pos.get("entry", pos.get("avgPrice", 0)))
+                    amount = float(pos.get("size", pos.get("amount", 0)))
+                    side = pos.get("side", "UNKNOWN")
+                    leverage = pos.get("leverage") or LEVERAGE
+                    position_id = pos.get("positionId", "")
+            else:
+                return
+        else:
+            # Old dict format
+            entry_price = float(real_position.get("entry", real_position.get("avgPrice", 0)))
+            amount = float(real_position.get("size", real_position.get("amount", 0)))
+            side = "LONG" if real_position.get("type", "").upper() == "BUY" else "SHORT" if real_position.get("type", "").upper() == "SELL" else real_position.get("side", "UNKNOWN")
+            leverage = real_position.get("leverage") or LEVERAGE
+            position_id = real_position.get("dealId", real_position.get("positionId", ""))
+
         estimated_entry_fee = entry_price * amount * (TRADING_FEE_TAKER / 100.0)
 
         trade_data = {
             "symbol": symbol,
-            "dealId": real_position.get("dealId", ""),
-            "side": "LONG" if real_position.get("type", "").upper() == "BUY" else "SHORT" if real_position.get("type", "").upper() == "SELL" else real_position.get("side", "UNKNOWN"),
+            "dealId": position_id,
+            "side": side,
             "entry_price": entry_price,
             "amount": amount,
-            "leverage": real_position.get("leverage") or LEVERAGE,
+            "leverage": leverage,
             "open_time": datetime.now().isoformat(),
             "status": "OPEN",
             "pnl_history": [],
@@ -280,27 +305,62 @@ class TradeTracker:
 
     def _handle_update_trade(self, symbol, stored_trade, real_position):
         """Update PnL and other stats"""
-        current_pnl = float(real_position.get("unrealizedPnl", 0) or real_position.get("pnl", 0))
+        # Support both dict and Position dataclass (list from new BingX client)
+        if isinstance(real_position, list):
+            if real_position:
+                pos = real_position[0]  # Take first position
+                if hasattr(pos, 'unrealized_pnl'):  # Position dataclass
+                    current_pnl = float(pos.unrealized_pnl)
+                    current_mark = pos.mark_price or pos.entry_price
+                    exchange_entry = float(pos.entry_price)
+                    leverage = pos.leverage
+                    side = "LONG" if pos.is_long else "SHORT"
+                    position_id = pos.position_id
+                else:  # dict format
+                    current_pnl = float(pos.get("unrealizedPnl", 0) or pos.get("pnl", 0))
+                    current_mark = pos.get("markPrice") or pos.get("avgPrice")
+                    exchange_entry = float(pos.get("entry", pos.get("avgPrice", 0)))
+                    leverage = pos.get("leverage")
+                    side = pos.get("side", "UNKNOWN")
+                    position_id = pos.get("positionId", "")
+            else:
+                return
+        elif hasattr(real_position, 'unrealized_pnl'):
+            # Position dataclass (not a list)
+            pos = real_position
+            current_pnl = float(pos.unrealized_pnl)
+            current_mark = pos.mark_price or pos.entry_price
+            exchange_entry = float(pos.entry_price)
+            leverage = pos.leverage
+            side = "LONG" if pos.is_long else "SHORT"
+            position_id = pos.position_id
+        else:
+            # Old dict format
+            current_pnl = float(real_position.get("unrealizedPnl", 0) or real_position.get("pnl", 0))
+            current_mark = real_position.get("markPrice") or real_position.get("avgPrice")
+            exchange_entry = float(real_position.get("entry", real_position.get("avgPrice", 0)))
+            leverage = real_position.get("leverage")
+            side = real_position.get("type", "").upper()
+            position_id = real_position.get("dealId", real_position.get("positionId", ""))
+
         stored_trade["last_pnl"] = current_pnl
-        current_mark = real_position.get("markPrice") or real_position.get("avgPrice")
         stored_trade["current_price"] = current_mark
 
         # Repair missing dealId for trades created before this field was stored
-        if "dealId" not in stored_trade and real_position.get("dealId"):
-            stored_trade["dealId"] = real_position.get("dealId")
+        if "dealId" not in stored_trade and position_id:
+            stored_trade["dealId"] = position_id
 
         # Always sync entry_price from exchange (source of truth)
-        exchange_entry = float(real_position.get("entry", real_position.get("avgPrice", 0)))
         if exchange_entry > 0:
             stored_trade["entry_price"] = exchange_entry
 
         # Repair side if unknown
         if stored_trade.get("side") in ["UNKNOWN", None]:
-            stored_trade["side"] = "LONG" if real_position.get("type", "").upper() == "BUY" else "SHORT" if real_position.get("type", "").upper() == "SELL" else "UNKNOWN"
+            stored_trade["side"] = side
 
         # Repair missing leverage from exchange data
-        if not stored_trade.get("leverage") and real_position.get("leverage"):
-            stored_trade["leverage"] = real_position.get("leverage")
+        if not stored_trade.get("leverage") and leverage:
+            stored_trade["leverage"] = leverage
 
         # Recalculate fees and net PnL
         entry_fee = stored_trade.get("estimated_entry_fee", 0)

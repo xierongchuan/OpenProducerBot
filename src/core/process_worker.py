@@ -20,12 +20,16 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
     """
     try:
         # 0. Setup shared WebSocket cache (if available)
+        print(f"[PROCESS] ws_cache type: {type(ws_cache)}, ws_ready type: {type(ws_ready)}")
         if ws_cache is not None and ws_ready is not None:
             try:
-                from src.exchanges.ws_data_provider import set_shared_cache
+                from src.exchanges.ws_data_provider import set_shared_cache, _shared_cache
+                print(f"[PROCESS] Before set_shared_cache: _shared_cache={type(_shared_cache)}")
                 set_shared_cache(ws_cache, ws_ready)
+                from src.exchanges.ws_data_provider import _shared_cache as after_cache
+                print(f"[PROCESS] After set_shared_cache: _shared_cache={type(after_cache)}")
             except Exception as e:
-                pass  # WS not critical, will fallback to REST
+                print(f"⚠️ Failed to set shared cache: {e}")
 
         # 1. Настройка логгера (один раз на старте процесса)
         from src.utils.logger import setup_symbol_logger, info, error, warning, StageTimer
@@ -81,8 +85,8 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
             commission = client.get_commission_rate(symbol)
             if commission:
                 from src.config import update_fee_rates
-                update_fee_rates(commission["maker"], commission["taker"])
-                info(f"💰 [{symbol}] Commission rates from exchange: maker={commission['maker']}%, taker={commission['taker']}%")
+                update_fee_rates(commission.maker, commission.taker)
+                info(f"💰 [{symbol}] Commission rates from exchange: maker={commission.maker}%, taker={commission.taker}%")
             else:
                 info(f"ℹ️ [{symbol}] Using default commission rates from config")
         except Exception as e:
@@ -565,7 +569,11 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                 current_price = analysis_result.get("current_price", 0)
                 current_pnl = None
                 if real_position:
-                    entry_price = float(real_position.get("entry", real_position.get("avgPrice", 0)))
+                    # Support both dict and Position dataclass
+                    if hasattr(real_position, 'entry_price'):
+                        entry_price = float(real_position.entry_price)
+                    else:
+                        entry_price = float(real_position.get("entry", real_position.get("avgPrice", 0)))
                     if entry_price > 0:
                         current_pnl = ((current_price - entry_price) / entry_price) * 100
 
@@ -648,7 +656,11 @@ def run_symbol_pipeline(symbol: str, ws_cache=None, ws_ready=None):
                     try:
                         funding = client.get_funding_rate(symbol)
                         if funding:
-                            info(f"💸 [{symbol}] Funding rate: {funding['funding_rate_pct']:+.4f}% | Next: {funding['next_funding_time']}")
+                            # Support both dict and FundingRate dataclass
+                            if hasattr(funding, 'funding_rate_pct'):
+                                info(f"💸 [{symbol}] Funding rate: {funding.funding_rate_pct:+.4f}% | Next: {funding.next_funding_time}")
+                            else:
+                                info(f"💸 [{symbol}] Funding rate: {funding['funding_rate_pct']:+.4f}% | Next: {funding['next_funding_time']}")
                     except Exception:
                         pass  # Non-critical
 

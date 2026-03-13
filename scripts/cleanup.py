@@ -64,7 +64,7 @@ def main():
         if file_path.exists():
             try:
                 with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write('[]\n')
+                    f.write('{}\n')
                 print(f"✅ Reset {json_file}")
             except Exception as e:
                 print(f"❌ Error resetting {json_file}: {e}")

@@ -2,7 +2,7 @@ import os
 import json
 import time
 from src.config import SYMBOLS, DATA_DIR, NEWS_SETTINGS, ENABLE_NEWS, CHART_RANGES, DEFAULT_CHART_RANGE, STYLE_PRESETS, STRATEGY_STYLE, BOT_CONFIG, parse_interval_minutes
-from src.utils.logger import info, error
+from src.utils.logger import info, error, warning
 from src.utils.helpers import get_filename
 from src.utils.news_api import get_news_for_symbol
 from src.exchanges.exchange_factory import get_exchange_client
@@ -15,6 +15,7 @@ def ensure_dirs():
 
 def fetch_prices(symbol):
     """Получает 288 последних свечей (24 часа истории) для символа"""
+    print(f"[COLLECTOR] fetch_prices called for {symbol}")  # DEBUG
     info(f"📊 Получение цен для {symbol}...")
 
     client = get_exchange_client()
@@ -50,8 +51,10 @@ def fetch_prices(symbol):
         info(f"📐 Config: Style={STRATEGY_STYLE}, Range={DEFAULT_CHART_RANGE} ({total_duration_minutes}m), TF={interval}, Candles={limit}")
 
         prices = client.get_kline_data(symbol, interval=interval, limit=limit)
+        print(f"[COLLECTOR] get_kline_data returned {len(prices) if prices else 0} prices")  # DEBUG
 
         if not prices:
+            warning(f"⚠️ get_kline_data вернул пустой список для {symbol}")
             raise ValueError(f"API вернул пустой список цен для {symbol}")
 
         # Basic validation of the first candle

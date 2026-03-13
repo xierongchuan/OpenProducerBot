@@ -113,7 +113,36 @@ class BingXClient(ExchangeClient):
     def get_klines(self, symbol: str, interval: str = "5m", limit: int = 288) -> KlinesList:
         """
         Получить исторические данные свечей.
+        Сначала пробует WebSocket кэш, потом REST API.
         """
+        # 1. Try WebSocket shared cache first
+        try:
+            from src.exchanges.ws_data_provider import is_cache_ready, get_klines_from_shared_cache
+
+            if is_cache_ready(symbol):
+                # Get all available data from cache (ignore limit, take all)
+                cached = get_klines_from_shared_cache(symbol, 10000)  # Get max available
+                if len(cached) >= 100:  # At least 100 candles available
+                    # Convert to KlinesList format
+                    from src.exchanges.dto.models import Kline
+                    klines = []
+                    for c in cached:
+                        klines.append(Kline(
+                            timestamp=c.get("snapshotTimeUTC", ""),
+                            open=float(c.get("openPrice", 0)),
+                            high=float(c.get("highPrice", 0)),
+                            low=float(c.get("lowPrice", 0)),
+                            close=float(c.get("closePrice", 0)),
+                            volume=float(c.get("volume", 0))
+                        ))
+                    info(f"📊 [WS CACHE] Using {len(klines)} candles for {symbol}")
+                    return klines
+        except ImportError:
+            pass  # WS provider not available
+        except Exception as e:
+            warning(f"⚠️ WS cache error for {symbol}: {e}")
+
+        # 2. Fallback to REST API
         return self._fetch_klines_rest(symbol, interval, limit)
 
     def _fetch_klines_rest(self, symbol: str, interval: str, limit: int) -> KlinesList:

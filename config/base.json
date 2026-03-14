@@ -103,56 +103,6 @@
       "ai_context_candles": 720
     }
   },
-  "plotter_ranges": {
-    "15m": {
-      "minutes": 15,
-      "interval": "15m"
-    },
-    "30m": {
-      "minutes": 30,
-      "interval": "30m"
-    },
-    "1h": {
-      "hours": 1,
-      "interval": "1h"
-    },
-    "2h": {
-      "hours": 2,
-      "interval": "2h"
-    },
-    "4h": {
-      "hours": 4,
-      "interval": "4h"
-    },
-    "6h": {
-      "hours": 6,
-      "interval": "6h"
-    },
-    "12h": {
-      "hours": 12,
-      "interval": "12h"
-    },
-    "1D": {
-      "days": 1,
-      "interval": "5m"
-    },
-    "2D": {
-      "days": 2,
-      "interval": "15m"
-    },
-    "3D": {
-      "days": 3,
-      "interval": "15m"
-    },
-    "1W": {
-      "days": 7,
-      "interval": "1h"
-    },
-    "14D": {
-      "days": 14,
-      "interval": "1h"
-    }
-  },
   "technical_analysis": {
     "sr_window": 20,
     "ema_periods": [
@@ -217,7 +167,7 @@
       "SWING": 50,
       "GRID": 20,
       "HYBRID": 10,
-      "MACDX": 10
+      "MACDX": 20
     }
   },
   "validation": {

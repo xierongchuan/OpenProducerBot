@@ -76,6 +76,8 @@ export function InteractiveChart({ data, fullscreen, onToggleFullscreen }: Inter
   const updateSeriesData = useCallback((newData: ChartData, series: SeriesRefs) => {
     if (!chartRef.current) return;
 
+    try {
+
     const newCandles = newData.candles;
     const oldCandles = lastDataRef.current?.candles || [];
 
@@ -201,6 +203,11 @@ export function InteractiveChart({ data, fullscreen, onToggleFullscreen }: Inter
           color: p.value >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
         });
       }
+    }
+    } catch (error) {
+      // При ошибке инкрементального обновления - пересоздаем график
+      console.warn('Failed to update chart incrementally, recreating:', error);
+      createFullChart(newData);
     }
   }, []);
 

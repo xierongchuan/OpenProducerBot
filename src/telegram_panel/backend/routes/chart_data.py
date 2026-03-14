@@ -161,7 +161,7 @@ def _resample_candles(candles: list[dict], target_minutes: int) -> list[dict]:
 @router.get("/{symbol}")
 async def get_chart_data(
     symbol: str,
-    range: str = Query(default="1D", alias="range"),
+    time_range: str = Query(default="1D", alias="range"),
     _user: dict = Depends(get_current_user),
 ) -> dict:
     """OHLCV + индикаторы + позиция для интерактивного графика."""
@@ -176,11 +176,16 @@ async def get_chart_data(
     if not raw_candles:
         raise HTTPException(status_code=404, detail="Empty price data")
 
-    config = _read_json(BASE_CONFIG_PATH, default={})
-    plotter_ranges = config.get("PLOTTER_RANGES", {})
-    range_config = plotter_ranges.get(range, {})
-    if not range_config:
-        range_config = {"days": 1, "interval": "5m"}
+    # time_range параметр теперь используется только для определения временного диапазона (количество дней),
+    # а таймфрейм определяется по фактическим свечам
+    range_days = 1  # По умолчанию 1 день
+    if time_range:
+        # Парсим time_range типа "1D", "2D", "1W" и т.д.
+        range_str = time_range.upper().replace("H", "").replace("M", "")
+        if range_str.endswith("D"):
+            range_days = int(range_str[:-1])
+        elif range_str.endswith("W"):
+            range_days = int(range_str[:-1]) * 7
 
     # Парсинг свечей (тот же формат что в plotter.py)
     candles = []
@@ -220,30 +225,52 @@ async def get_chart_data(
 
     candles.sort(key=lambda x: x["time"])
 
-    # Ресемплинг
-    interval_str = range_config.get("interval", "1m")
-    tf_map = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240, "6h": 360, "12h": 720, "1d": 1440}
-    target_minutes = tf_map.get(interval_str, 1)
+    # === Определение фактического таймфрейма из свечей ===
+    def _detect_timeframe(candles_list: list[dict]) -> int:
+        """Определяет таймфрейм в минутах на основе разницы между свечами."""
+        if len(candles_list) < 2:
+            return 1  # По умолчанию 1 минута
 
-    if target_minutes > 1:
-        candles = _resample_candles(candles, target_minutes)
+        # Вычисляем разницы между соседними свечами
+        diffs = []
+        for i in range(1, min(len(candles_list), 20)):  # Берем первые 20 для стабильности
+            diff = candles_list[i]["time"] - candles_list[i-1]["time"]
+            diffs.append(diff)
+
+        if not diffs:
+            return 1
+
+        # Медианная разница
+        diffs.sort()
+        median_diff = diffs[len(diffs) // 2]
+
+        # Конвертируем в минуты
+        minutes = median_diff // 60
+
+        # Округляем до ближайшего стандартного таймфрейма
+        standard_timeframes = [1, 5, 15, 30, 60, 120, 240, 360, 720, 1440]
+        for tf in standard_timeframes:
+            if tf * 60 >= median_diff:
+                return tf
+
+        return minutes if minutes > 0 else 1
+
+    # Определяем фактический таймфрейм из загруженных свечей
+    detected_tf_minutes = _detect_timeframe(candles)
+
+    # Используем фактический таймфрейм свечей - никакого ресемплинга!
+    # Графики показывают ровно то, что есть в данных
+    target_minutes = detected_tf_minutes
 
     # Фильтр по временному диапазону
     now = datetime.now(timezone.utc)
-    if "days" in range_config:
-        cutoff = now - timedelta(days=range_config["days"])
-    elif "hours" in range_config:
-        cutoff = now - timedelta(hours=range_config["hours"])
-    elif "minutes" in range_config:
-        cutoff = now - timedelta(minutes=range_config["minutes"])
-    else:
-        cutoff = now - timedelta(days=1)
+    cutoff = now - timedelta(days=range_days)
 
     cutoff_ts = int(cutoff.timestamp())
     candles = [c for c in candles if c["time"] >= cutoff_ts]
 
     if not candles:
-        raise HTTPException(status_code=404, detail=f"No data for range {range}")
+        raise HTTPException(status_code=404, detail=f"No data for range {time_range}")
 
     # Индикаторы
     closes = [c["close"] for c in candles]
@@ -311,17 +338,17 @@ async def get_chart_data(
             "leverage": trade.get("leverage"),
         }
 
-    available_ranges = list(plotter_ranges.keys())
+    # available_ranges теперь формируется на основе фактических данных
+    # Просто возвращаем стандартные периоды для UI
+    available_ranges = ["15m", "30m", "1h", "2h", "4h", "6h", "12h", "1D", "2D", "3D", "1W", "14D"]
 
-    # Определяем какой интервал показывать:
-    # - Для диапазонов-интервалов (15m, 30m, 1h и т.д.) показываем сам диапазон
-    # - Для диапазонов-периодов (1D, 2D и т.д.) показываем интервал свечей
-    range_intervals = {"15m", "30m", "1h", "2h", "4h", "6h", "12h"}
-    display_interval = range if range in range_intervals else interval_str
+    # interval показываем фактический (определённый из свечей)
+    tf_minutes_to_str = {1: "1m", 5: "5m", 15: "15m", 30: "30m", 60: "1h", 120: "2h", 240: "4h", 360: "6h", 720: "12h", 1440: "1d"}
+    display_interval = tf_minutes_to_str.get(detected_tf_minutes, f"{detected_tf_minutes}m")
 
     return {
         "symbol": symbol,
-        "range": range,
+        "range": time_range,
         "interval": display_interval,
         "candles": candles,
         "indicators": indicators,

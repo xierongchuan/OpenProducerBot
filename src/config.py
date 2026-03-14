@@ -383,8 +383,8 @@ DEFAULT_STYLE_PRESETS = {
         "description": "5m swing with deterministic signals."
     },
     "MACDX": {
-        "timeframe": "5m", "chart_period": "1D", "plotter_period": "6h",
-        "loop_interval": 60, "position_check_interval": 15,
+        "timeframe": "1m", "chart_period": "1D", "plotter_period": "1D",
+        "loop_interval": 45, "position_check_interval": 15,
         "atr_sl_mult": 1.5, "atr_tp_mult": 3.0, "leverage": 10,
         "description": "No-AI MACD crossover strategy with 3-5 confirmations."
     }

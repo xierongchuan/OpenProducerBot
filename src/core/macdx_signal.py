@@ -189,54 +189,65 @@ class MACDXSignalGenerator:
         if not macd_cross_long and not macd_cross_short:
             info(f"📊 [MACDX] HOLD | No MACD crossover (hist: {macd_hist:.4f}, line: {macd_line:.4f}, signal: {macd_signal_line:.4f})")
 
-            # Собираем детальную информацию об индикаторах для отображения (но НЕ используем для сигнала)
+            # Собираем детальную информацию об индикаторах для отображения
             indicators_ok = []
             indicators_fail = []
+            potential_confirmations = 0
 
-            # EMA
+            # EMA (+2)
             if ema9 > 0 and ema21 > 0:
                 if ema9 > ema21:
-                    indicators_ok.append(f"EMA: 9>{21} (бычий)\n")
+                    indicators_ok.append(f"EMA: 9>{21} (бычий)")
+                    potential_confirmations += 2
                 else:
-                    indicators_ok.append(f"EMA: 9<{21} (медвежий)\n")
+                    indicators_ok.append(f"EMA: 9<{21} (медвежий)")
+                    potential_confirmations += 2
             else:
-                indicators_fail.append(f"EMA: нет данных\n")
+                indicators_fail.append(f"EMA: нет данных")
 
-            # Свечи
+            # Свечи (+1)
             last_5_dir = analysis.get('last_5_direction', 'MIXED')
             if last_5_dir in ['UP', 'STRONG UP']:
-                indicators_ok.append(f"Свечи: {last_5_dir} (бычий)\n")
+                indicators_ok.append(f"Свечи: {last_5_dir} (бычий)")
+                potential_confirmations += 1
             elif last_5_dir in ['DOWN', 'STRONG DOWN']:
-                indicators_ok.append(f"Свечи: {last_5_dir} (медвежий)\n")
+                indicators_ok.append(f"Свечи: {last_5_dir} (медвежий)")
+                potential_confirmations += 1
             else:
-                indicators_fail.append(f"Свечи: {last_5_dir}\n")
+                indicators_fail.append(f"Свечи: {last_5_dir}")
 
-            # RSI
+            # RSI (+1)
             if 0 < rsi <= 100:
                 if rsi < 35:
-                    indicators_fail.append(f"RSI: {rsi:.1f} (перепродан)\n")
+                    indicators_fail.append(f"RSI: {rsi:.1f} (перепродан)")
                 elif rsi > 65:
                     indicators_fail.append(f"RSI: {rsi:.1f} (перекуплен)")
                 else:
-                    indicators_ok.append(f"RSI: {rsi:.1f}\n")
+                    indicators_ok.append(f"RSI: {rsi:.1f}")
+                    potential_confirmations += 1
             else:
-                indicators_fail.append(f"RSI: нет данных\n")
+                indicators_fail.append(f"RSI: нет данных")
 
-            # Объём
+            # Объём (+1)
             if volume_ratio > 0:
                 if volume_ratio >= 0.8:
-                    indicators_ok.append(f"Объём: {volume_ratio:.1f}x\n")
+                    indicators_ok.append(f"Объём: {volume_ratio:.1f}x")
+                    potential_confirmations += 1
                 else:
-                    indicators_fail.append(f"Объём: {volume_ratio:.1f}x (слабый)\n")
+                    indicators_fail.append(f"Объём: {volume_ratio:.1f}x (слабый)")
 
-            ok_str = "; ".join(indicators_ok) if indicators_ok else "Нет"
-            fail_str = "; ".join(indicators_fail) if indicators_fail else "Нет"
-            reason = f"[MACDX] Нет пересечения MACD. ПОДТВЕРЖДЕНЫ: {ok_str}.\nОТКЛОНЕНЫ: {fail_str}"
+            # Рассчитываем potential_score на основе подтверждений (без MACD)
+            # EMA=2, Свечи=1, RSI=1, Объём=1 -> макс 5 подтверждений, макс score = 6
+            # НЕ ограничиваем по max_score (это для полной стратегии с MACD)
+            potential_score = potential_confirmations * 2  # Без MACD, макс 10 но для journal покажем 6
 
-            # При отсутствии MACD пересечения - сразу HOLD без расчёта потенциального score
-            return self._hold_result(max_score, [reason],
+            # Для HOLD без MACD используем отдельный max_score = 6 (EMA + Свечи + RSI + Объём)
+            hold_max_score = 6
+            max_confirmations = 5
+            return self._hold_result(max_score, ["No MACD crossover"],
                                      {"macd_hist": macd_hist, "filter": "no_macd_cross",
-                                      "potential_score": 0, "confirmations": 0,
+                                      "potential_score": potential_score, "confirmations": potential_confirmations,
+                                      "max_confirmations": max_confirmations,
                                       "indicators_ok": indicators_ok, "indicators_fail": indicators_fail}, regime)
 
         # === SCORE CONFIRMATIONS ===

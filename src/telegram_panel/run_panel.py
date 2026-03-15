@@ -12,8 +12,7 @@ import sys
 import threading
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Resolve project root & fix sys.path for both local and Docker execution
+# ---------------------------------------------------------------------------# Load .env from project root BEFORE any other imports that use env vars
 # ---------------------------------------------------------------------------
 _this_dir = Path(__file__).resolve().parent
 
@@ -25,17 +24,7 @@ else:
     # Docker: /app/ — project root is cwd or parent
     _project_root = _this_dir
 
-# Ensure project root is in sys.path so `src.*` imports work locally
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
-# Also add telegram_panel dir so relative imports work in Docker
-if str(_this_dir) not in sys.path:
-    sys.path.insert(0, str(_this_dir))
-
-# ---------------------------------------------------------------------------
-# Load .env from project root
-# ---------------------------------------------------------------------------
+# Load .env FIRST, before any imports that might use environment variables
 _env_path = _project_root / ".env"
 if _env_path.exists():
     with open(_env_path) as _f:
@@ -46,6 +35,14 @@ if _env_path.exists():
                 _key = _key.strip()
                 if _key not in os.environ:
                     os.environ[_key] = _val.strip().strip('"').strip("'")
+
+# Ensure project root is in sys.path so `src.*` imports work locally
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+# Also add telegram_panel dir so relative imports work in Docker
+if str(_this_dir) not in sys.path:
+    sys.path.insert(0, str(_this_dir))
 
 logging.basicConfig(
     level=logging.INFO,

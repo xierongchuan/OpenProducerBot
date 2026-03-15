@@ -335,8 +335,8 @@ async def cmd_weblink(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     user_id = update.effective_user.id
 
-    # Determine panel URL
-    panel_url = PANEL_URL
+    # Determine panel URL - read dynamically to support runtime changes
+    panel_url = os.environ.get("TELEGRAM_PANEL_URL", "")
     if not panel_url:
         await update.message.reply_text(
             "⚠️ Панель недоступна. TELEGRAM_PANEL_URL не настроен."

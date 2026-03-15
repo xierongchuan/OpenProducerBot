@@ -91,16 +91,19 @@ def validate_init_data_string(init_data: str) -> None:
 
 
 async def get_current_user(
+    # X-Telegram-Init-Data: авторизация через Telegram Mini App (web_app)
     x_telegram_init_data: str = Header(default="", alias="X-Telegram-Init-Data"),
+    # X-Web-Token: авторизация через ссылку /weblink (браузер)
+    x_web_token: str = Header(default="", alias="X-Web-Token"),
 ) -> dict:
-    """FastAPI dependency: validates Telegram initData and checks user against allowed list.
+    """FastAPI dependency: validates Telegram initData or web token and checks user against allowed list.
 
-    This is kept for backward compatibility. For web token support, use get_current_user_with_token.
+    Supports both X-Telegram-Init-Data (Telegram Mini App) and X-Web-Token (weblink).
     """
     # Delegate to the combined function
     return await get_current_user_with_token(
         x_telegram_init_data=x_telegram_init_data,
-        x_web_token="",
+        x_web_token=x_web_token,
     )
 
 
@@ -149,7 +152,9 @@ def validate_web_token(token: str) -> dict | None:
 
 
 async def get_current_user_with_token(
+    # X-Telegram-Init-Data: авторизация через Telegram Mini App (web_app)
     x_telegram_init_data: str = Header(default="", alias="X-Telegram-Init-Data"),
+    # X-Web-Token: авторизация через ссылку /weblink (браузер)
     x_web_token: str = Header(default="", alias="X-Web-Token"),
 ) -> dict:
     """FastAPI dependency: supports both Telegram initData and web token auth.
@@ -162,11 +167,19 @@ async def get_current_user_with_token(
     5. User not in ALLOWED_IDS → 403
     6. All checks pass → return user data
     """
+    logger.info("Auth request: x_web_token='%s' (len=%d), x_telegram_init_data present=%s",
+                x_web_token[:8]+'...' if x_web_token else "(empty)",
+                len(x_web_token) if x_web_token else 0,
+                bool(x_telegram_init_data))
+
     # Try web token first
     if x_web_token:
+        logger.info("Trying web token validation for token=%s...", x_web_token[:8])
         result = validate_web_token(x_web_token)
         if result is not None:
+            logger.info("Web token validation SUCCESS for user_id=%s", result.get("user", {}).get("id"))
             return result
+        logger.warning("Web token validation FAILED")
         # Invalid web token - try Telegram auth as fallback
         if not x_telegram_init_data:
             raise HTTPException(

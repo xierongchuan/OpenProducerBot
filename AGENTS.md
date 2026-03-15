@@ -24,3 +24,4 @@ podman run --rm -v .:/app:Z -w /app python:3.12-slim sh -c "pip install -q reque
 - **File paths** - Use `os.path.join(os.path.dirname(os.path.dirname(__file__)), 'file')` for project-relative paths
 - **Strategy modes** - HYBRID uses deterministic scoring + AI confirmation; HYBRID_VETO uses AI veto only (APPROVE/REJECT English-only)
 - **Error handling** - Log with emoji prefixes (✅, ❌, ⚠️) before raising or continuing
+- **Общение на русском** - Все сообщения, ответы и взаимодействие с пользователем должны быть на русском языке

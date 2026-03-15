@@ -68,11 +68,15 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # CORS for Telegram WebApp and direct browser access
-# Use PANEL_ALLOWED_ORIGINS env var (comma-separated) or defaults
-_allowed_origins = os.getenv(
-    "PANEL_ALLOWED_ORIGINS",
-    "https://web.telegram.org,https://telegram.org"
-).split(",")
+# Use TELEGRAM_PANEL_URL as origin, or allow all for development
+_panel_url = os.getenv("TELEGRAM_PANEL_URL", "")
+if _panel_url:
+    # Extract origin from TELEGRAM_PANEL_URL
+    from urllib.parse import urlparse
+    parsed = urlparse(_panel_url)
+    _allowed_origins = [f"{parsed.scheme}://{parsed.netloc}"] if parsed.netloc else ["*"]
+else:
+    _allowed_origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,

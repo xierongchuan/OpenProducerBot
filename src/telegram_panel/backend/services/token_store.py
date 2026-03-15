@@ -191,6 +191,8 @@ class TokenStore:
         Returns:
             Dict with user_id if valid, None if invalid/expired
         """
+        logger.info("TokenStore.validate_token called with token=%s...", token[:8] if len(token) >= 8 else token)
+
         # DEBUG: Temporarily disable rate limiter to test
         # if not self._rate_limiter.is_allowed(token[:8] if len(token) >= 8 else token):
         #     logger.warning("Rate limit exceeded for token validation")
@@ -203,6 +205,8 @@ class TokenStore:
 
             # Cleanup expired tokens first
             self._cleanup_expired()
+
+            logger.info("Looking for token in %d tokens", len(self._tokens))
 
             token_data = self._tokens.get(token)
             if not token_data:

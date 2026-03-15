@@ -12,8 +12,13 @@ import { Settings } from './pages/Settings';
 import { Journal } from './pages/Journal';
 import { getDashboard } from './api/client';
 
-// Detect if we're using web token from URL
+// Detect if we're using web token from URL (hash or search)
 function isWebTokenMode(): boolean {
+  const hash = window.location.hash;
+  if (hash && hash.includes('token=')) {
+    const hashParams = new URLSearchParams(hash.substring(1));
+    return !!hashParams.get('token');
+  }
   const urlParams = new URLSearchParams(window.location.search);
   const token = urlParams.get('token');
   return !!token;
@@ -26,6 +31,21 @@ export function App() {
   const { subscribe, isConnected } = useWebSocket();
   const isWebMode = isWebTokenMode();
   useTelegram();
+
+  // Редирект с /auth на главную страницу с токеном
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.startsWith('#/auth')) {
+      // Извлекаем токен и редиректим на главную
+      const params = new URLSearchParams(hash.substring(1)); // убираем #
+      const token = params.get('token');
+      if (token) {
+        window.location.hash = '#/?token=' + token;
+      } else {
+        window.location.hash = '#';
+      }
+    }
+  }, []);
 
   // Проверка авторизации при загрузке (с retry для Telegram SDK race condition)
   useEffect(() => {

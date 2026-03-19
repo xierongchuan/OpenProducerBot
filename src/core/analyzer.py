@@ -30,6 +30,8 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     """
     Рассчитывает MACD (Moving Average Convergence Divergence)
     Returns: (macd_line, signal_line, histogram, histogram_prev)
+
+    FIX: Now correctly calculates previous histogram for proper crossover detection.
     """
     # Debug: log prices count and sample
     if len(prices) < slow + signal:
@@ -54,25 +56,47 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
         macd_history.append(ef - es)
 
     if len(macd_history) >= signal:
-        signal_line = calculate_ema(macd_history, signal)
+        # Track signal line history for proper prev_histogram calculation
+        signal_history = []
+        prev_signal_line = 0.0
+
+        # Initialize signal line with SMA
+        signal_line = sum(macd_history[:signal]) / signal
+
+        # Calculate k for EMA smoothing
+        k = 2.0 / (signal + 1)
+
+        # Process remaining values and track each signal line value
+        for i, m in enumerate(macd_history[signal:]):
+            prev_signal_line = signal_line  # Save previous before updating
+            signal_line = m * k + signal_line * (1 - k)
+            # Store signal line after first update (for n-1 period)
+            if i == 0:
+                signal_history.append(signal_line)
+
+        # Current histogram
+        histogram = macd_line - signal_line
+
+        # FIX: Calculate previous histogram correctly
+        # Need signal line from (n-1) period, not current
+        if len(macd_history) >= signal + 1:
+            # Recalculate signal line for previous period (n-1)
+            # Using the same EMA approach: start from SMA of previous history
+            macd_prev = macd_history[:-1]  # All except last
+            if len(macd_prev) >= signal:
+                signal_line_prev = sum(macd_prev[:signal]) / signal
+                for m in macd_prev[signal:]:
+                    signal_line_prev = m * k + signal_line_prev * (1 - k)
+                histogram_prev = macd_history[-2] - signal_line_prev
+            else:
+                histogram_prev = macd_history[-2] - signal_line
+        else:
+            # Not enough history, approximate
+            histogram_prev = macd_history[-2] - signal_line if len(macd_history) >= 2 else histogram
     else:
         signal_line = macd_line
-
-    histogram = macd_line - signal_line
-
-    # Calculate previous histogram for crossover detection
-    if len(macd_history) >= 2:
-        # Previous MACD line (from before current)
-        macd_line_prev = macd_history[-2] if len(macd_history) >= 2 else macd_line
-        # Previous signal line - approximate using previous values
-        if len(macd_history) >= signal + 1:
-            macd_history_prev = macd_history[:-1]
-            signal_line_prev = calculate_ema(macd_history_prev, signal)
-        else:
-            signal_line_prev = signal_line
-        histogram_prev = macd_line_prev - signal_line_prev
-    else:
-        histogram_prev = histogram
+        histogram = 0
+        histogram_prev = 0
 
     return round(macd_line, 6), round(signal_line, 6), round(histogram, 6), round(histogram_prev, 6)
 

@@ -161,6 +161,11 @@ class LightweightAnalyzer:
         macd_history = []
         ema_f_temp = sum(closes[:self._macd_fast]) / self._macd_fast
         ema_s_temp = sum(closes[:self._macd_slow]) / self._macd_slow
+
+        # Track signal line history for correct prev_histogram calculation
+        signal_history = []
+        prev_ema_macd_signal = 0.0
+
         for c in closes[self._macd_slow:]:
             ema_f_temp = c * k_mf + ema_f_temp * (1 - k_mf)
             ema_s_temp = c * k_ms + ema_s_temp * (1 - k_ms)
@@ -169,14 +174,30 @@ class LightweightAnalyzer:
         if len(macd_history) >= self._macd_signal:
             self._ema_macd_signal = sum(macd_history[:self._macd_signal]) / self._macd_signal
             k_sig = 2.0 / (self._macd_signal + 1)
-            for m in macd_history[self._macd_signal:]:
+            for i, m in enumerate(macd_history[self._macd_signal:]):
+                prev_ema_macd_signal = self._ema_macd_signal  # Save previous before update
                 self._ema_macd_signal = m * k_sig + self._ema_macd_signal * (1 - k_sig)
+                if i < len(macd_history[self._macd_signal:]) - 1:
+                    signal_history.append(self._ema_macd_signal)
 
         self._macd_line = self._ema_macd_fast - self._ema_macd_slow
         self._macd_hist = self._macd_line - self._ema_macd_signal
-        # Save previous histogram for crossover detection (second-to-last)
+
+        # FIX: Use correct previous signal line for prev_histogram
+        # Option 1: If we have signal_history, use the last value before current
+        # Option 2: Recalculate based on macd_history
         if len(macd_history) >= 2:
-            self._prev_macd_hist = macd_history[-2] - self._ema_macd_signal
+            # Need to calculate what the signal line was at (n-1) period
+            # For proper EMA calculation, we need to track previous signal value
+            # Use the approach: signal_prev = EMA of macd_history[:-1]
+            if len(macd_history) >= self._macd_signal + 1:
+                # Recalculate signal line for previous period
+                macd_hist_prev = macd_history[:-1]
+                signal_line_prev = self._calculate_ema_from_values(macd_hist_prev, self._macd_signal)
+                self._prev_macd_hist = macd_history[-2] - signal_line_prev
+            else:
+                # Not enough history, approximate using current values
+                self._prev_macd_hist = macd_history[-2] - self._ema_macd_signal
         else:
             self._prev_macd_hist = self._macd_hist
 
@@ -426,6 +447,19 @@ class LightweightAnalyzer:
             return 100.0 if self._rsi_avg_gain > 0 else 50.0
         rs = self._rsi_avg_gain / self._rsi_avg_loss
         return 100.0 - (100.0 / (1.0 + rs))
+
+    def _calculate_ema_from_values(self, values: list, period: int) -> float:
+        """Calculate EMA from a list of values (not prices)."""
+        if len(values) < period:
+            return sum(values) / len(values) if values else 0.0
+
+        k = 2.0 / (period + 1)
+        ema = sum(values[:period]) / period  # Start with SMA
+
+        for value in values[period:]:
+            ema = (value - ema) * k + ema
+
+        return ema
 
     def _update_macd(self, close: float):
         k_f = 2.0 / (self._macd_fast + 1)

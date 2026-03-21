@@ -29,9 +29,10 @@ def calculate_ema(prices, period):
 def calculate_macd(prices, fast=12, slow=26, signal=9):
     """
     Рассчитывает MACD (Moving Average Convergence Divergence)
-    Returns: (macd_line, signal_line, histogram, histogram_prev)
+    Returns: (macd_line, signal_line, histogram, histogram_prev, histogram_2prev)
 
     FIX: Now correctly calculates previous histogram for proper crossover detection.
+    Добавлен histogram_2prev - значение гистограммы 2 свечи назад для проверки что пересечение было недавно.
     """
     # Debug: log prices count and sample
     min_required = slow + signal
@@ -88,12 +89,23 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
             histogram_prev = macd_history[-2] - signal_line
         else:
             histogram_prev = histogram
+
+        # Дополнительно вычисляем гистограмму 2 свечи назад
+        if len(signal_history) >= 3:
+            # signal_history[-3] это значение 2 периода назад
+            histogram_2prev = macd_history[-3] - signal_history[-3]
+        elif len(macd_history) >= 3:
+            # Приблизительная оценка
+            histogram_2prev = macd_history[-3] - signal_line
+        else:
+            histogram_2prev = histogram_prev
     else:
         signal_line = macd_line
         histogram = 0
         histogram_prev = 0
+        histogram_2prev = 0
 
-    return round(macd_line, 6), round(signal_line, 6), round(histogram, 6), round(histogram_prev, 6)
+    return round(macd_line, 6), round(signal_line, 6), round(histogram, 6), round(histogram_prev, 6), round(histogram_2prev, 6)
 
 
 def calculate_bollinger_bands(prices, period=20, std_mult=2.0):
@@ -593,8 +605,8 @@ def analyze_symbol(symbol, position=None, decision_context=""):
     else:
         atr_ratio = 1.0
 
-    # MACD calculation
-    macd_line, macd_signal, macd_hist, macd_hist_prev = calculate_macd(close_prices)
+    # MACD calculation (5 values: + histogram_2prev for crossover timing)
+    macd_line, macd_signal, macd_hist, macd_hist_prev, macd_hist_2prev = calculate_macd(close_prices)
 
     # Bollinger Bands calculation
     bb_upper, bb_middle, bb_lower, bb_width = calculate_bollinger_bands(close_prices)
@@ -964,6 +976,7 @@ def analyze_symbol(symbol, position=None, decision_context=""):
             "macd_signal": macd_signal,
             "macd_hist": macd_hist,
             "macd_hist_prev": macd_hist_prev,
+            "macd_hist_2prev": macd_hist_2prev,
             "bb_upper": bb_upper,
             "bb_lower": bb_lower,
             "bb_width": bb_width,
@@ -1024,6 +1037,7 @@ def analyze_symbol(symbol, position=None, decision_context=""):
             "macd_signal": macd_signal,
             "macd_hist": macd_hist,
             "macd_hist_prev": macd_hist_prev,
+            "macd_hist_2prev": macd_hist_2prev,
             "bb_upper": bb_upper,
             "bb_lower": bb_lower,
             "bb_width": bb_width,
@@ -1135,6 +1149,7 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         "macd_signal": macd_signal,
         "macd_hist": macd_hist,
         "macd_hist_prev": macd_hist_prev,
+        "macd_hist_2prev": macd_hist_2prev,
         "has_position": bool(position),
         "position": position,
         "prompt": prompt.strip(),

@@ -1,7 +1,10 @@
 from datetime import datetime
 import fcntl
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 
@@ -248,12 +251,110 @@ async def sync_positions(_user: dict = Depends(get_current_user)) -> dict:
             trade["close_time"] = datetime.now().isoformat()
             trade["reason"] = "MANUAL_CLOSE_SYNC"
 
+            # Try to enrich with real close data from exchange
+            try:
+                from src.exchanges.dto import OrderStatus, OrderSide
+                recent_orders = client.get_recent_orders(symbol, limit=20)
+
+                trade_side = trade.get("side", "").upper()
+                entry_price = trade.get("entry_price", 0)
+
+                # Determine entry and close sides
+                if trade_side == "LONG":
+                    entry_side = OrderSide.BUY
+                    close_side = OrderSide.SELL
+                else:  # SHORT
+                    entry_side = OrderSide.SELL
+                    close_side = OrderSide.BUY
+
+                # Find matching entry order by price (within 0.1% tolerance)
+                entry_order = None
+                exit_order = None
+
+                for order in recent_orders:
+                    # Handle both dict and dataclass
+                    if hasattr(order, 'status'):  # dataclass
+                        is_filled = order.status == OrderStatus.FILLED
+                        order_side = order.side
+                        order_price = order.average_price
+                    else:  # dict
+                        is_filled = order.get("status", "").upper() == "FILLED"
+                        order_side = OrderSide.BUY if order.get("side", "").upper() == "BUY" else OrderSide.SELL
+                        order_price = order.get("avgPrice", 0)
+
+                    if not is_filled:
+                        continue
+
+                    # Find entry order with matching price
+                    if entry_order is None and order_side == entry_side:
+                        if entry_price > 0 and abs(order_price - entry_price) / entry_price < 0.01:
+                            entry_order = order
+                            continue
+
+                    # Find exit order AFTER entry (by order ID - higher ID = later)
+                    if entry_order is not None and order_side == close_side:
+                        if hasattr(order, 'order_id') and hasattr(entry_order, 'order_id'):
+                            if int(order.order_id) > int(entry_order.order_id):
+                                exit_order = order
+                                break
+                        elif hasattr(order, 'get') and hasattr(entry_order, 'get'):
+                            if int(order.get('orderId', 0)) > int(entry_order.get('orderId', 0)):
+                                exit_order = order
+                                break
+
+                close_order = exit_order
+
+                if close_order:
+                    # Handle both dict and dataclass
+                    if hasattr(close_order, 'average_price'):  # dataclass
+                        close_price = close_order.average_price
+                        realized_pnl = close_order.realized_pnl
+                        close_fee = abs(close_order.commission)
+                        order_id = close_order.order_id
+                    else:  # dict
+                        close_price = close_order.get("avgPrice")
+                        realized_pnl = close_order.get("profit", 0)
+                        close_fee = abs(close_order.get("commission", 0))
+                        order_id = close_order.get("orderId")
+
+                    entry_fee = trade.get("estimated_entry_fee", 0)
+
+                    trade["close_price"] = close_price
+                    trade["realized_pnl"] = round(realized_pnl, 4)
+                    # Only update last_pnl if it doesn't have real data yet (preserve bot-captured data)
+                    if trade.get('last_pnl', 0) == 0 or trade.get('last_pnl') is None:
+                        trade["last_pnl"] = round(realized_pnl, 4)
+                    trade["actual_close_fee"] = round(close_fee, 4)
+                    trade["actual_total_fees"] = round(entry_fee + close_fee, 4)
+                    trade["net_pnl"] = round(realized_pnl - entry_fee - close_fee, 4)
+                    trade["close_order_id"] = order_id
+
+                    logger.info(f"💰 [Sync] Enriched close data for {symbol}: "
+                               f"close_price={close_price}, realized_pnl={realized_pnl:.4f}, "
+                               f"fees={entry_fee + close_fee:.4f}, net_pnl={trade['net_pnl']:.4f}")
+                else:
+                    logger.warning(f"⚠️ [Sync] No matching close order found for {symbol}")
+            except Exception as e:
+                logger.warning(f"⚠️ [Sync] Failed to enrich close data for {symbol}: {e}")
+
             history = read_json(history_path)
             if not isinstance(history, list):
                 history = []
-            history.append(trade)
-            if not write_json(history_path, history):
-                write_errors = True
+
+            # Check for duplicate before adding to history
+            deal_id = trade.get('dealId')
+            is_duplicate = any(
+                t.get('dealId') == deal_id
+                for t in history
+                if isinstance(t, dict) and deal_id
+            )
+
+            if is_duplicate:
+                logger.info(f"Сделка {deal_id} уже в истории (sync), пропускаем")
+            else:
+                history.append(trade)
+                if not write_json(history_path, history):
+                    write_errors = True
 
             removed.append(symbol)
 
@@ -313,14 +414,116 @@ async def close_position_by_symbol(
         trade["status"] = "CLOSED"
         trade["close_time"] = datetime.now().isoformat()
         trade["reason"] = "PANEL_CLOSE"
+
+        # Try to enrich with real close data from exchange
+        try:
+            from src.exchanges.dto import OrderStatus, OrderSide
+            import time as _time
+            _time.sleep(1)  # Wait for order to be processed
+            recent_orders = client.get_recent_orders(symbol, limit=20)
+
+            trade_side = trade.get("side", "").upper()
+            entry_price = trade.get("entry_price", 0)
+
+            # Determine entry and close sides
+            if trade_side == "LONG":
+                entry_side = OrderSide.BUY
+                close_side = OrderSide.SELL
+            else:  # SHORT
+                entry_side = OrderSide.SELL
+                close_side = OrderSide.BUY
+
+            # Find matching entry order by price (within 1% tolerance)
+            entry_order = None
+            exit_order = None
+
+            for order in recent_orders:
+                # Handle both dict and dataclass
+                if hasattr(order, 'status'):  # dataclass
+                    is_filled = order.status == OrderStatus.FILLED
+                    order_side = order.side
+                    order_price = order.average_price
+                else:  # dict
+                    is_filled = order.get("status", "").upper() == "FILLED"
+                    order_side = OrderSide.BUY if order.get("side", "").upper() == "BUY" else OrderSide.SELL
+                    order_price = order.get("avgPrice", 0)
+
+                if not is_filled:
+                    continue
+
+                # Find entry order with matching price
+                if entry_order is None and order_side == entry_side:
+                    if entry_price > 0 and abs(order_price - entry_price) / entry_price < 0.01:
+                        entry_order = order
+                        continue
+
+                # Find exit order AFTER entry (by order ID - higher ID = later)
+                if entry_order is not None and order_side == close_side:
+                    if hasattr(order, 'order_id') and hasattr(entry_order, 'order_id'):
+                        if int(order.order_id) > int(entry_order.order_id):
+                            exit_order = order
+                            break
+                    elif hasattr(order, 'get') and hasattr(entry_order, 'get'):
+                        if int(order.get('orderId', 0)) > int(entry_order.get('orderId', 0)):
+                            exit_order = order
+                            break
+
+            close_order = exit_order
+
+            if close_order:
+                # Handle both dict and dataclass
+                if hasattr(close_order, 'average_price'):  # dataclass
+                    close_price = close_order.average_price
+                    realized_pnl = close_order.realized_pnl
+                    close_fee = abs(close_order.commission)
+                    order_id = close_order.order_id
+                else:  # dict
+                    close_price = close_order.get("avgPrice")
+                    realized_pnl = close_order.get("profit", 0)
+                    close_fee = abs(close_order.get("commission", 0))
+                    order_id = close_order.get("orderId")
+
+                entry_fee = trade.get("estimated_entry_fee", 0)
+
+                trade["close_price"] = close_price
+                trade["realized_pnl"] = round(realized_pnl, 4)
+                # Only update last_pnl if it doesn't have real data yet (preserve bot-captured data)
+                if trade.get('last_pnl', 0) == 0 or trade.get('last_pnl') is None:
+                    trade["last_pnl"] = round(realized_pnl, 4)
+                trade["actual_close_fee"] = round(close_fee, 4)
+                trade["actual_total_fees"] = round(entry_fee + close_fee, 4)
+                trade["net_pnl"] = round(realized_pnl - entry_fee - close_fee, 4)
+                trade["close_order_id"] = order_id
+
+                logger.info(f"💰 [Close] Enriched close data for {symbol}: "
+                           f"close_price={close_price}, realized_pnl={realized_pnl:.4f}, "
+                           f"fees={entry_fee + close_fee:.4f}, net_pnl={trade['net_pnl']:.4f}")
+            else:
+                logger.warning(f"⚠️ [Close] No matching close order found for {symbol}")
+        except Exception as e:
+            logger.warning(f"⚠️ [Close] Failed to enrich close data for {symbol}: {e}")
+
         del active[symbol]
         active_written = write_json(active_path, active)
 
         history = read_json(history_path)
         if not isinstance(history, list):
             history = []
-        history.append(trade)
-        history_written = write_json(history_path, history)
+
+        # Check for duplicate before adding to history
+        deal_id = trade.get('dealId')
+        is_duplicate = any(
+            t.get('dealId') == deal_id
+            for t in history
+            if isinstance(t, dict) and deal_id
+        )
+
+        if is_duplicate:
+            logger.info(f"Сделка {deal_id} уже в истории (close), пропускаем")
+            history_written = True
+        else:
+            history.append(trade)
+            history_written = write_json(history_path, history)
 
         if active_written and history_written:
             return {"status": "success", "symbol": symbol, "message": "Position closed"}

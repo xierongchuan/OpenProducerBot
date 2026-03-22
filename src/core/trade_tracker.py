@@ -129,6 +129,70 @@ class TradeTracker:
         except Exception as e:
             warning(f"Failed to append to {HISTORY_FILE}: {e}")
 
+    def _is_duplicate_in_history(self, deal_id: str) -> bool:
+        """Проверяет, есть ли уже сделка с таким dealId в истории.
+
+        Также проверяет по паре (symbol, entry_price, side, open_time) для надёжности.
+        """
+        if not deal_id:
+            return False
+        try:
+            if os.path.exists(HISTORY_FILE):
+                with open(HISTORY_FILE, 'r') as f:
+                    content = f.read()
+                    if content.strip():
+                        try:
+                            history = json.loads(content)
+                            if isinstance(history, list):
+                                # Check by dealId
+                                for trade in history:
+                                    if isinstance(trade, dict) and trade.get('dealId') == deal_id:
+                                        return True
+                                return False
+                        except json.JSONDecodeError:
+                            pass
+        except Exception:
+            pass
+        return False
+
+    def _check_trade_exists(self, trade: dict) -> bool:
+        """Проверяет, существует ли сделка в истории по нескольким критериям."""
+        deal_id = trade.get('dealId')
+        symbol = trade.get('symbol')
+        entry_price = trade.get('entry_price')
+        side = trade.get('side')
+        open_time = trade.get('open_time')
+
+        # If we have dealId, use it
+        if deal_id:
+            return self._is_duplicate_in_history(deal_id)
+
+        # Otherwise, check by combination of symbol, entry_price, side, open_time
+        if not all([symbol, entry_price, side, open_time]):
+            return False
+
+        try:
+            if os.path.exists(HISTORY_FILE):
+                with open(HISTORY_FILE, 'r') as f:
+                    content = f.read()
+                    if content.strip():
+                        try:
+                            history = json.loads(content)
+                            if isinstance(history, list):
+                                for t in history:
+                                    if isinstance(t, dict):
+                                        # Check by combination
+                                        if (t.get('symbol') == symbol and
+                                            t.get('entry_price') == entry_price and
+                                            t.get('side') == side and
+                                            t.get('open_time') == open_time):
+                                            return True
+                        except json.JSONDecodeError:
+                            pass
+        except Exception:
+            pass
+        return False
+
     def sync_position(self, symbol, real_position, exchange_client=None):
         """
         Synchronizes the internal state with the real position from the exchange.
@@ -300,8 +364,12 @@ class TradeTracker:
         else:
             warning(f"⚠️ [TradeTracker] No exchange client for {symbol}, using estimated PnL")
 
-        # Move to history
-        self._append_history(stored_trade)
+        # Check for duplicate before adding to history
+        if self._check_trade_exists(stored_trade):
+            deal_id = stored_trade.get('dealId', 'N/A')
+            info(f"⚠️ [TradeTracker] Сделка {deal_id} уже в истории, пропускаем")
+        else:
+            self._append_history(stored_trade)
 
         # Remove from active
         del self.active_trades[symbol]
@@ -439,7 +507,12 @@ class TradeTracker:
             stored["status"] = "CLOSED_SYNC"
             stored["close_time"] = datetime.now().isoformat()
             stored["reason"] = "STALE_SYNC_CLEANUP"
-            self._append_history(stored)
+            # Check for duplicate before adding to history
+            if self._check_trade_exists(stored):
+                deal_id = stored.get('dealId', 'N/A')
+                info(f"⚠️ [TradeTracker] Сделка {deal_id} уже в истории (stale sync), пропускаем")
+            else:
+                self._append_history(stored)
             del self.active_trades[symbol]
 
         # 2. Add missing trades (on exchange but not in tracker)

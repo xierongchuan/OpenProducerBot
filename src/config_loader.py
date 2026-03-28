@@ -394,7 +394,8 @@ def convert_to_legacy_format(config: Dict[str, Any], strategy: str) -> Dict[str,
     elif strategy_upper == 'MACDX':
         legacy['MACDX_SETTINGS'] = {
             'enabled': True,
-            'signal_rules': strategy_config.get('signal_rules', {})
+            'signal_rules': strategy_config.get('signal_rules', {}),
+            'preset': strategy_config.get('preset', {})
         }
     elif strategy_upper == 'HYBRID':
         legacy['HYBRID_SETTINGS'] = {

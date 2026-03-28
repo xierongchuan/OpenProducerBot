@@ -10,7 +10,8 @@
     "position_check_interval": 15,
     "atr_sl_mult": 1.5,
     "atr_tp_mult": 3.0,
-    "leverage": 6
+    "leverage": 6,
+    "cooldown_after_close_hours": 0.5
   },
 
   "signal_rules": {

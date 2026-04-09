@@ -5,32 +5,44 @@
 """
 
 import argparse
-import sys
 import os
+import sys
 
 # Добавить src в путь
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from src.backtest.engine import BacktestEngine
-from src.utils.logger import info, error
+from src.utils.logger import error, info
+
 
 def main():
     parser = argparse.ArgumentParser(description="Запуск бэктеста")
-    parser.add_argument("--symbol", default="BTCUSDT", help="Символ для бэктеста (по умолчанию первый из конфига)")
-    parser.add_argument("--strategy", default="MACDX", help="Стратегия (по умолчанию MACDX)")
-    parser.add_argument("--balance", type=float, default=1000.0, help="Начальный баланс")
+    parser.add_argument(
+        "--symbol",
+        default="BTCUSDT",
+        help="Символ для бэктеста (по умолчанию первый из конфига)",
+    )
+    parser.add_argument(
+        "--strategy", default="MACDX", help="Стратегия (по умолчанию MACDX)"
+    )
+    parser.add_argument(
+        "--balance", type=float, default=1000.0, help="Начальный баланс"
+    )
     args = parser.parse_args()
 
     try:
         # Определить символ: если не указан, взять первый из конфига
         if args.symbol == "BTCUSDT":  # Заглушка, в реале из config
             from src.config_loader import load_active_config
+
             config = load_active_config()
             symbols = config.get("symbols", {}).get("bingx", [])
             if symbols:
                 args.symbol = symbols[0]
 
-        info(f"Запуск бэктеста для {args.symbol} стратегии {args.strategy} с балансом {args.balance}")
+        info(
+            f"Запуск бэктеста для {args.symbol} стратегии {args.strategy} с балансом {args.balance}"
+        )
 
         try:
             engine = BacktestEngine(args.symbol, args.strategy, args.balance)
@@ -55,12 +67,15 @@ def main():
             print(f"Отчет сохранен в data/backtest_result.json")
             print("✅ Бэктест завершен")
         else:
-            error("Бэктест не выполнен")
-            print(f"Debug: result={bool(result)}, metrics in result={'metrics' in result if result else False}")
+            # error("Бэктест не выполнен")
+            print(
+                f"Debug: result={bool(result)}, metrics in result={'metrics' in result if result else False}"
+            )
 
     except Exception as e:
         error(f"Ошибка запуска бэктеста: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

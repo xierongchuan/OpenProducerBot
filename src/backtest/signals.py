@@ -1,7 +1,6 @@
 import math
 from typing import List, Dict, Any, Tuple
 from ..core.predict import get_prediction
-from ..core.signals.macdx import MacdxSignalGenerator
 
 class SignalGenerator:
     """Генерирует сигналы для детерминированных стратегий, таких как MACDX."""
@@ -72,9 +71,24 @@ class SignalGenerator:
         # Добавить current_price и другие ключи
         analysis["current_price"] = klines[index]["closePrice"]
 
-        # Использовать оригинальный MacdxSignalGenerator
-        macdx_generator = MacdxSignalGenerator(self.config)
-        result = macdx_generator.generate(analysis)
+        # Динамический импорт SignalGenerator для стратегии
+        strategy_lower = self.strategy.lower()
+        try:
+            if strategy_lower == "macdx":
+                from ..core.signals.macdx import MacdxSignalGenerator as SignalGen
+            elif strategy_lower == "hybrid":
+                from ..core.signals.hybrid import HybridSignalGenerator as SignalGen
+            elif strategy_lower == "aiscalp":
+                from ..core.signals.aiscalp import AiscalpSignalGenerator as SignalGen
+            else:
+                return {"action": "HOLD", "reason": f"Unsupported strategy: {self.strategy}"}
+
+            generator = SignalGen(self.config)
+            result = generator.generate(analysis)
+        except ImportError:
+            return {"action": "HOLD", "reason": f"Signal generator for {self.strategy} not found"}
+        except Exception as e:
+            return {"action": "HOLD", "reason": f"Error generating signal: {e}"}
 
         # Нормализовать ключи
         normalized = {

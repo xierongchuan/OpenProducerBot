@@ -67,15 +67,19 @@ class BacktestEngine:
                 self.simulator.update_positions(current_prices)
 
                 # Генерировать сигнал
-                signal = self.signal_generator.generate_signal(klines, i)
-                action = signal.get("action", "HOLD")
+                try:
+                    signal = self.signal_generator.generate_signal(klines, i)
+                    action = signal.get("action", "HOLD")
 
-                if action in ["BUY", "SELL"]:
-                    side = "LONG" if action == "BUY" else "SHORT"
-                    self.simulator.open_position(self.symbol, side, current_price)
-                    info(f"📈 Сигнал {action} на {self.symbol} по {current_price:.2f}")
-                elif action == "HOLD":
-                    info(f"⏸️ HOLD на {self.symbol} по {current_price:.2f}, причина: {signal.get('reason', 'нет')}")
+                    if action in ["BUY", "SELL"]:
+                        side = "LONG" if action == "BUY" else "SHORT"
+                        self.simulator.open_position(self.symbol, side, current_price)
+                        info(f"📈 Сигнал {action} на {self.symbol} по {current_price:.2f}")
+                    elif action == "HOLD":
+                        info(f"⏸️ HOLD на {self.symbol} по {current_price:.2f}, причина: {signal.get('reason', 'нет')}")
+                except Exception as e:
+                    error(f"Ошибка генерации сигнала на индексе {i}: {e}")
+                    continue
 
                 # Проверить условия выхода
                 rsi = self.signal_generator.calculate_indicators(klines, i).get("rsi", 50)

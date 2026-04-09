@@ -32,25 +32,31 @@ def main():
 
         info(f"Запуск бэктеста для {args.symbol} стратегии {args.strategy} с балансом {args.balance}")
 
-        engine = BacktestEngine(args.symbol, args.strategy, args.balance)
-        result = engine.run()
+        try:
+            engine = BacktestEngine(args.symbol, args.strategy, args.balance)
+            result = engine.run()
+        except Exception as e:
+            error(f"Exception in backtest: {e}")
+            result = {}
 
-        if result:
+        if result and "metrics" in result:
             metrics = result["metrics"]
             print("\nРезультаты бэктеста:")
-            print(f"Символ: {result['symbol']}")
-            print(f"Стратегия: {result['strategy']}")
-            print(f"Total P&L: {metrics['total_pnl']:.2f}")
-            print(f"Realized P&L: {metrics['realized_pnl']:.2f}")
-            print(f"Unrealized P&L: {metrics['unrealized_pnl']:.2f}")
-            print(f"Win Rate: {metrics['win_rate']:.2%}")
-            print(f"Total Trades: {metrics['total_trades']}")
-            print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
-            print(f"Max Drawdown: {metrics['max_drawdown']:.2f}")
-            print(f"Commission Impact: {metrics['commission_impact']:.2%}")
+            print(f"Символ: {result.get('symbol', 'N/A')}")
+            print(f"Стратегия: {result.get('strategy', 'N/A')}")
+            print(f"Total P&L: {metrics.get('total_pnl', 0):.2f}")
+            print(f"Realized P&L: {metrics.get('realized_pnl', 0):.2f}")
+            print(f"Unrealized P&L: {metrics.get('unrealized_pnl', 0):.2f}")
+            print(f"Win Rate: {metrics.get('win_rate', 0):.2%}")
+            print(f"Total Trades: {metrics.get('total_trades', 0)}")
+            print(f"Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.2f}")
+            print(f"Max Drawdown: {metrics.get('max_drawdown', 0):.2f}")
+            print(f"Commission Impact: {metrics.get('commission_impact', 0):.4f}")
             print(f"Отчет сохранен в data/backtest_result.json")
+            print("✅ Бэктест завершен")
         else:
             error("Бэктест не выполнен")
+            print(f"Debug: result={bool(result)}, metrics in result={'metrics' in result if result else False}")
 
     except Exception as e:
         error(f"Ошибка запуска бэктеста: {e}")

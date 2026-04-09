@@ -6,28 +6,11 @@ from ..core.signals.macdx import MacdxSignalGenerator
 class SignalGenerator:
     """Генерирует сигналы для детерминированных стратегий, таких как MACDX."""
 
-    def __init__(self, strategy: str = "MACDX"):
+    def __init__(self, strategy: str = "MACDX", config: Dict[str, Any] = None):
         self.strategy = strategy
-        # Параметры из конфига MACDX
-        self.rules = {
-            "macd_cross_weight": 2,
-            "rsi_zone_weight": 2,
-            "ema_alignment_weight": 2,
-            "not_sideways_weight": 1,
-            "no_exhaustion_weight": 1,
-            "volume_weight": 1,
-            "min_score": 4,
-            "min_confirmations": 3,
-            "rsi_long_min": 25,
-            "rsi_long_max": 65,
-            "rsi_short_min": 35,
-            "rsi_short_max": 75,
-            "bb_width_threshold": 0.5,
-            "adx_threshold": 20,
-            "atr_ratio_threshold": 0.01,
-            "volume_ratio_threshold": 0.8,
-            "counter_trend_ema_threshold": 1.0
-        }
+        self.config = config or {}
+        # Параметры из конфига
+        self.rules = self.config.get("signal_rules", {})
 
     def calculate_indicators(self, klines: List[Dict[str, Any]], index: int) -> Dict[str, Any]:
         """Рассчитывает индикаторы на основе последних свечей."""
@@ -81,110 +64,38 @@ class SignalGenerator:
         }
 
     def generate_signal(self, klines: List[Dict[str, Any]], index: int) -> Dict[str, Any]:
-        """Генерирует сигнал на основе индикаторов."""
+        """Генерирует сигнал, используя оригинальный код стратегии MACDX."""
         analysis = self.calculate_indicators(klines, index)
         if not analysis:
             return {"action": "HOLD", "reason": "Недостаточно данных"}
 
-        # Логика скоринга MACDX
-        rsi = analysis["rsi"]
-        ema9 = analysis["ema9"]
-        ema21 = analysis["ema21"]
-        macd_hist = analysis["macd_hist"]
-        macd_hist_prev = analysis["macd_hist_prev"]
-        bb_width = analysis["bb_width"]
-        adx = analysis["adx"]
-        atr_ratio = analysis["atr_ratio"]
-        volume_ratio = analysis["volume_ratio"]
+        # Добавить current_price и другие ключи
+        analysis["current_price"] = klines[index]["closePrice"]
 
-        # Фильтры
-        # if atr_ratio < self.rules["atr_ratio_threshold"]:
-        #     return {"action": "HOLD", "reason": f"Низкая волатильность: ATR ratio {atr_ratio:.4f} < {self.rules['atr_ratio_threshold']}"}
-        if volume_ratio < self.rules["volume_ratio_threshold"] and self.rules.get("enable_volume_filter", True):
-            return {"action": "HOLD", "reason": "Низкий объем"}
+        # Использовать оригинальный MacdxSignalGenerator
+        macdx_generator = MacdxSignalGenerator(self.config)
+        result = macdx_generator.generate(analysis)
 
-        # MACD crossover
-        macd_cross_long = macd_hist_prev <= 0 and macd_hist > 0
-        macd_cross_short = macd_hist_prev >= 0 and macd_hist < 0
+        # Нормализовать ключи
+        normalized = {
+            "action": result.get("signal", "HOLD"),
+            "score": result.get("score", 0),
+            "reason": result.get("reasons", ["нет"])[0] if result.get("reasons") else "нет"
+        }
 
-        if not macd_cross_long and not macd_cross_short:
-            return {"action": "HOLD", "reason": "Нет MACD crossover"}
-
-        long_score = short_score = 0
-        long_confirmations = short_confirmations = 0
-
-        # RSI zone
-        if macd_cross_long:
-            if self.rules["rsi_long_min"] <= rsi <= self.rules["rsi_long_max"]:
-                long_score += self.rules["rsi_zone_weight"]
-                long_confirmations += 1
-        if macd_cross_short:
-            if self.rules["rsi_short_min"] <= rsi <= self.rules["rsi_short_max"]:
-                short_score += self.rules["rsi_zone_weight"]
-                short_confirmations += 1
-
-        # EMA alignment
-        if ema9 > ema21:
-            if macd_cross_long:
-                long_score += self.rules["ema_alignment_weight"]
-                long_confirmations += 1
-        elif ema9 < ema21:
-            if macd_cross_short:
-                short_score += self.rules["ema_alignment_weight"]
-                short_confirmations += 1
-
-        # Not sideways
-        if bb_width >= self.rules["bb_width_threshold"] and adx >= self.rules["adx_threshold"]:
-            if macd_cross_long:
-                long_score += self.rules["not_sideways_weight"]
-                long_confirmations += 1
-            if macd_cross_short:
-                short_score += self.rules["not_sideways_weight"]
-                short_confirmations += 1
-
-        # No exhaustion (упрощено: нет экстремального RSI)
-        if rsi <= 70 and rsi >= 30:
-            if macd_cross_long:
-                long_score += self.rules["no_exhaustion_weight"]
-                long_confirmations += 1
-            if macd_cross_short:
-                short_score += self.rules["no_exhaustion_weight"]
-                short_confirmations += 1
-
-        # Volume
-        if volume_ratio >= self.rules["volume_ratio_threshold"]:
-            if macd_cross_long:
-                long_score += self.rules["volume_weight"]
-                long_confirmations += 1
-            if macd_cross_short:
-                short_score += self.rules["volume_weight"]
-                short_confirmations += 1
-
-        # Decision
-        signal = None
-        score = 0
-        if long_score >= self.rules["min_score"] and long_confirmations >= self.rules["min_confirmations"]:
-            signal = "BUY"
-            score = long_score
-            reason = f"Long signal, score {long_score}"
-        elif short_score >= self.rules["min_score"] and short_confirmations >= self.rules["min_confirmations"]:
-            signal = "SELL"
-            score = short_score
-            reason = f"Short signal, score {short_score}"
-        else:
-            return {"action": "HOLD", "reason": "Недостаточный скор"}
-
-        # AI confirmation for strategies with AI
-        if self.strategy.upper() in ["HYBRID", "HYBRID_VETO"] and signal:
+        # Если есть AI, добавить подтверждение
+        if self.strategy.upper() in ["HYBRID", "HYBRID_VETO"] and normalized["action"] in ["BUY", "SELL"]:
+            signal = normalized["action"]
+            score = normalized["score"]
             ai_decision = self._get_ai_confirmation(signal, score, klines, index)
             if ai_decision == "hold":
-                return {"action": "HOLD", "reason": f"AI rejected {signal.lower()} signal"}
+                normalized = {"action": "HOLD", "reason": f"AI rejected {signal.lower()} signal"}
             elif ai_decision == signal.lower():
-                reason += " (AI approved)"
+                normalized["reason"] = (normalized.get("reason", "") + " (AI approved)").strip()
             else:
-                return {"action": "HOLD", "reason": f"AI changed signal to {ai_decision}"}
+                normalized = {"action": "HOLD", "reason": f"AI changed signal to {ai_decision}"}
 
-        return {"action": signal, "score": score, "reason": reason}
+        return normalized
 
     # Вспомогательные методы для расчетов индикаторов
     def _calculate_rsi(self, closes: List[float], period: int) -> float:

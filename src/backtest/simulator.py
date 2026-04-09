@@ -16,7 +16,7 @@ class BacktestSimulator:
         self.total_pnl_without_commissions = 0.0
 
     def open_position(self, symbol: str, side: str, entry_price: float, sl_percent: float = 0.01, tp_percent: float = 0.03) -> bool:
-        """Открывает позицию."""
+        """Открывает позицию. Если позиция уже открыта, не открывает новую."""
         if symbol in self.positions:
             warning(f"⚠️ Позиция для {symbol} уже открыта")
             return False

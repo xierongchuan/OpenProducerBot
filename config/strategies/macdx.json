@@ -3,7 +3,7 @@
   "_version": "1.0.0",
 
   "preset": {
-    "timeframe": "15m",
+    "timeframe": "1h",
     "chart_period": "1D",
     "plotter_period": "1D",
     "loop_interval": 60,
@@ -41,4 +41,3 @@
     "min_risk_reward_ratio": 1.2
   }
 }
-

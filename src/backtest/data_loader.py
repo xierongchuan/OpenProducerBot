@@ -28,9 +28,14 @@ class DataLoader:
                 return klines
             else:
                 warning(f"⚠️ Не удалось получить данные для {self.symbol}")
+                print(f"⚠️ Не удалось получить данные с биржи для {self.symbol}.")
+                print(f"   Проверьте: 1) API ключи в .env  2) сетевое подключение  3) SELinux (pasta)")
+                print(f"   Или положите данные вручную в {self.data_path}")
                 return []
         except Exception as e:
             error(f"❌ Ошибка при получении данных: {e}")
+            print(f"❌ Ошибка при получении данных с биржи: {e}")
+            print(f"   Если SELinux блокирует pasta, используйте: --security-opt label=disable")
             return []
 
     def load_data(self, fetch_if_missing: bool = True) -> List[Dict[str, Any]]:

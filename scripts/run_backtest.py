@@ -83,6 +83,11 @@ def main():
             print(f"\nБэктест завершен: 0 сделок за период {result.get('data_period', 'N/A')}")
         else:
             print("❌ Бэктест не выполнен (нет данных или ошибка)")
+            print("   Возможные причины:")
+            print("   1. Нет данных свечей — проверьте data/prices/{SYMBOL}.json")
+            print("   2. Нет API ключей — проверьте .env файл (BINGX_API_KEY, BINGX_SECRET_KEY)")
+            print("   3. SELinux блокирует сеть — проверьте наличие ошибок pasta/udmabuf")
+            print("      Решение: добавьте --security-opt label=disable в podman run")
 
     except Exception as e:
         error(f"Ошибка запуска бэктеста: {e}")

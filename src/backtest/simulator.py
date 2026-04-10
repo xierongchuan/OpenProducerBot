@@ -14,14 +14,21 @@ class BacktestSimulator(BaseCommandExecutor):
     на исторических данных без изменения кода стратегии.
     """
 
-    def __init__(self, initial_balance: float = 1000.0, leverage: float = 5.0, position_size_percent: float = 0.1):
+    def __init__(self, initial_balance: float = 1000.0, leverage: float = 5.0,
+                 position_size_percent: float = 0.1,
+                 maker_rate: float = 0.0002, taker_rate: float = 0.0005,
+                 default_sl_percent: float = 0.01, default_tp_percent: float = 0.03,
+                 capital_mode: str = "isolated"):
         self.initial_balance = initial_balance
         self.balance = initial_balance
         self.leverage = leverage
         self.position_size_percent = position_size_percent
+        self.capital_mode = capital_mode
+        self.default_sl_percent = default_sl_percent
+        self.default_tp_percent = default_tp_percent
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position
         self.pnl_tracker = PnLTracker()
-        self.commission_calculator = CommissionCalculator()
+        self.commission_calculator = CommissionCalculator(maker_rate=maker_rate, taker_rate=taker_rate)
         self.total_pnl_without_commissions = 0.0
         self.command_history: List[TradeCommand] = []
 
@@ -99,7 +106,7 @@ class BacktestSimulator(BaseCommandExecutor):
     # ── Core position management ──
 
     def open_position(self, symbol: str, side: str, entry_price: float,
-                      sl_percent: float = 0.01, tp_percent: float = 0.03,
+                      sl_percent: Optional[float] = None, tp_percent: Optional[float] = None,
                       sl_price: Optional[float] = None, tp_price: Optional[float] = None,
                       position_size: Optional[float] = None,
                       entry_time: Optional[str] = None) -> bool:
@@ -108,8 +115,16 @@ class BacktestSimulator(BaseCommandExecutor):
             warning(f"⚠️ Позиция для {symbol} уже открыта")
             return False
 
+        if sl_percent is None:
+            sl_percent = self.default_sl_percent
+        if tp_percent is None:
+            tp_percent = self.default_tp_percent
+
         if position_size is None:
-            position_size = self.balance * self.position_size_percent * self.leverage
+            if self.capital_mode == "full_capital":
+                position_size = self.balance * self.leverage
+            else:  # isolated
+                position_size = self.balance * self.position_size_percent * self.leverage
 
         # Комиссия на открытие (taker)
         commission = self.commission_calculator.calculate_commission(position_size)

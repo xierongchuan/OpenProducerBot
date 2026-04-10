@@ -15,10 +15,14 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from src.backtest.engine import BacktestEngine
+from src.config_loader import load_backtest_config
 from src.utils.logger import error, info
 
 
 def main():
+    backtest_config = load_backtest_config()
+    default_balance = backtest_config.get("capital", {}).get("initial_balance", 1000.0)
+
     parser = argparse.ArgumentParser(description="Запуск бэктеста")
     parser.add_argument(
         "--symbol",
@@ -29,7 +33,8 @@ def main():
         "--strategy", default="MACDX", help="Стратегия (по умолчанию MACDX)"
     )
     parser.add_argument(
-        "--balance", type=float, default=1000.0, help="Начальный баланс"
+        "--balance", type=float, default=None,
+        help=f"Начальный баланс (по умолчанию {default_balance} из config/backtest.json)",
     )
     args = parser.parse_args()
 

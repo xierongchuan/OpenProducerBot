@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 from .data_loader import DataLoader
 from .signals import SignalGenerator
 from .simulator import BacktestSimulator
-from ..config_loader import resolve_symbol_config
+from ..config_loader import resolve_symbol_config, load_backtest_config
 from ..core.commands.models import TradeCommand, TradeAction
 from ..utils.logger import info, error
 
@@ -23,18 +23,40 @@ class BacktestEngine:
     """
 
     def __init__(self, symbol: str, strategy: str = "MACDX",
-                 initial_balance: float = 1000.0):
+                 initial_balance: Optional[float] = None):
         self.symbol = symbol
         self.strategy = strategy
+        self.backtest_config = load_backtest_config()
         self.config = self._load_config()
         preset = self.config.get("preset", {})
         self.timeframe = preset.get("timeframe", "15m")
         self.data_loader = DataLoader(symbol, self.timeframe)
         self.signal_generator = SignalGenerator(strategy, self.config)
+
+        # Capital: CLI arg > config/backtest.json > 1000.0
+        capital_config = self.backtest_config.get("capital", {})
+        balance = initial_balance or capital_config.get("initial_balance", 1000.0)
+        capital_mode = capital_config.get("mode", "isolated")
+
+        # Commission rates from config
+        commission_config = self.backtest_config.get("commission", {})
+        maker_rate = commission_config.get("maker_rate", 0.0002)
+        taker_rate = commission_config.get("taker_rate", 0.0005)
+
+        # Default SL/TP from config
+        defaults_config = self.backtest_config.get("defaults", {})
+        default_sl = defaults_config.get("sl_percent", 0.01)
+        default_tp = defaults_config.get("tp_percent", 0.03)
+
         self.simulator = BacktestSimulator(
-            initial_balance=initial_balance,
+            initial_balance=balance,
             leverage=preset.get("leverage", 5.0),
-            position_size_percent=self.config.get("position", {}).get("size_percent", 10) / 100.0
+            position_size_percent=self.config.get("position", {}).get("size_percent", 10) / 100.0,
+            maker_rate=maker_rate,
+            taker_rate=taker_rate,
+            default_sl_percent=default_sl,
+            default_tp_percent=default_tp,
+            capital_mode=capital_mode,
         )
         self._setup_logging()
 
@@ -161,22 +183,32 @@ class BacktestEngine:
         position = self.simulator.positions[self.symbol]
         side = position["side"]
 
+        exit_rules = self.backtest_config.get("exit_rules", {})
+
         # MACD reversal
-        macd_hist_prev = position.get("macd_hist_prev", 0)
-        if (side == "LONG" and macd_hist < 0 and macd_hist_prev >= 0) or \
-           (side == "SHORT" and macd_hist > 0 and macd_hist_prev <= 0):
-            if position["unrealized_pnl"] >= 0.005 or position["unrealized_pnl"] < -0.01:
-                return TradeCommand.close(
-                    symbol=self.symbol, current_price=current_price,
-                    reason="MACD reversal", strategy=self.strategy,
-                )
+        macd_rules = exit_rules.get("macd_reversal", {})
+        if macd_rules.get("enabled", True):
+            profit_threshold = macd_rules.get("profit_threshold", 0.005)
+            loss_threshold = macd_rules.get("loss_threshold", -0.01)
+            macd_hist_prev = position.get("macd_hist_prev", 0)
+            if (side == "LONG" and macd_hist < 0 and macd_hist_prev >= 0) or \
+               (side == "SHORT" and macd_hist > 0 and macd_hist_prev <= 0):
+                if position["unrealized_pnl"] >= profit_threshold or position["unrealized_pnl"] < loss_threshold:
+                    return TradeCommand.close(
+                        symbol=self.symbol, current_price=current_price,
+                        reason="MACD reversal", strategy=self.strategy,
+                    )
 
         # RSI extreme
-        if (side == "LONG" and rsi > 80) or (side == "SHORT" and rsi < 20):
-            return TradeCommand.close(
-                symbol=self.symbol, current_price=current_price,
-                reason="RSI extreme", strategy=self.strategy,
-            )
+        rsi_rules = exit_rules.get("rsi_extreme", {})
+        if rsi_rules.get("enabled", True):
+            long_exit = rsi_rules.get("long_exit_above", 80)
+            short_exit = rsi_rules.get("short_exit_below", 20)
+            if (side == "LONG" and rsi > long_exit) or (side == "SHORT" and rsi < short_exit):
+                return TradeCommand.close(
+                    symbol=self.symbol, current_price=current_price,
+                    reason="RSI extreme", strategy=self.strategy,
+                )
 
         return None
 

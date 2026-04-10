@@ -103,7 +103,10 @@ class BacktestEngine:
                     continue
 
                 # 4. Проверить стратегические условия выхода → TradeCommand
-                exit_cmd = self._check_exit_command(klines, i, current_price)
+                #    Используем кэшированные индикаторы из generate_signal,
+                #    чтобы не пересчитывать их дважды
+                exit_cmd = self._check_exit_command(klines, i, current_price,
+                                                     cached_indicators=self.signal_generator.last_indicators)
                 if exit_cmd:
                     self.simulator.execute(exit_cmd)
 
@@ -145,12 +148,13 @@ class BacktestEngine:
                 strategy=self.strategy,
             )
 
-    def _check_exit_command(self, klines, index: int, current_price: float) -> Optional[TradeCommand]:
+    def _check_exit_command(self, klines, index: int, current_price: float,
+                            cached_indicators: Optional[Dict[str, Any]] = None) -> Optional[TradeCommand]:
         """Проверяет стратегические условия выхода и возвращает TradeCommand.close() или None."""
         if self.symbol not in self.simulator.positions:
             return None
 
-        indicators = self.signal_generator.calculate_indicators(klines, index)
+        indicators = cached_indicators or self.signal_generator.calculate_indicators(klines, index)
         rsi = indicators.get("rsi", 50)
         macd_hist = indicators.get("macd_hist", 0)
 

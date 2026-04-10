@@ -311,6 +311,114 @@ class TestTradeResult:
         assert d["command"]["action"] == "hold"
 
 
+class TestBacktestEngineConfig:
+    """Test BacktestEngine reads config values from correct paths."""
+
+    def test_timeframe_from_preset(self):
+        """Engine reads timeframe from config.preset.timeframe, not top-level."""
+        from unittest.mock import patch, MagicMock
+
+        mock_config = {
+            "preset": {
+                "timeframe": "1h",
+                "leverage": 6,
+            },
+            "position": {
+                "size_percent": 32,
+            },
+            "signal_rules": {},
+        }
+
+        with patch("src.backtest.engine.resolve_symbol_config", return_value=mock_config):
+            with patch("src.backtest.engine.DataLoader") as MockLoader:
+                with patch("src.backtest.engine.SignalGenerator"):
+                    from src.backtest.engine import BacktestEngine
+                    engine = BacktestEngine("BTCUSDT", "MACDX", 1000.0)
+
+                    assert engine.timeframe == "1h"
+                    MockLoader.assert_called_once_with("BTCUSDT", "1h")
+
+    def test_leverage_from_preset(self):
+        """Engine reads leverage from config.preset.leverage."""
+        from unittest.mock import patch
+
+        mock_config = {
+            "preset": {
+                "timeframe": "1h",
+                "leverage": 10,
+            },
+            "position": {
+                "size_percent": 20,
+            },
+            "signal_rules": {},
+        }
+
+        with patch("src.backtest.engine.resolve_symbol_config", return_value=mock_config):
+            with patch("src.backtest.engine.DataLoader"):
+                with patch("src.backtest.engine.SignalGenerator"):
+                    from src.backtest.engine import BacktestEngine
+                    engine = BacktestEngine("BTCUSDT", "MACDX", 1000.0)
+
+                    assert engine.simulator.leverage == 10
+
+    def test_position_size_from_config(self):
+        """Engine reads position size from config.position.size_percent and converts to fraction."""
+        from unittest.mock import patch
+
+        mock_config = {
+            "preset": {
+                "timeframe": "15m",
+                "leverage": 5,
+            },
+            "position": {
+                "size_percent": 32,
+            },
+            "signal_rules": {},
+        }
+
+        with patch("src.backtest.engine.resolve_symbol_config", return_value=mock_config):
+            with patch("src.backtest.engine.DataLoader"):
+                with patch("src.backtest.engine.SignalGenerator"):
+                    from src.backtest.engine import BacktestEngine
+                    engine = BacktestEngine("BTCUSDT", "MACDX", 1000.0)
+
+                    assert engine.simulator.position_size_percent == pytest.approx(0.32)
+
+    def test_fallback_defaults(self):
+        """Engine uses sane defaults when preset/position are missing."""
+        from unittest.mock import patch
+
+        mock_config = {}
+
+        with patch("src.backtest.engine.resolve_symbol_config", return_value=mock_config):
+            with patch("src.backtest.engine.DataLoader"):
+                with patch("src.backtest.engine.SignalGenerator"):
+                    from src.backtest.engine import BacktestEngine
+                    engine = BacktestEngine("BTCUSDT", "MACDX", 1000.0)
+
+                    assert engine.timeframe == "15m"
+                    assert engine.simulator.leverage == 5.0
+                    assert engine.simulator.position_size_percent == pytest.approx(0.10)
+
+    def test_config_passed_to_signal_generator(self):
+        """Engine passes resolved config to SignalGenerator."""
+        from unittest.mock import patch, call
+
+        mock_config = {
+            "preset": {"timeframe": "1h", "leverage": 6},
+            "position": {"size_percent": 10},
+            "signal_rules": {"min_score": 5},
+        }
+
+        with patch("src.backtest.engine.resolve_symbol_config", return_value=mock_config):
+            with patch("src.backtest.engine.DataLoader"):
+                with patch("src.backtest.engine.SignalGenerator") as MockSG:
+                    from src.backtest.engine import BacktestEngine
+                    engine = BacktestEngine("BTCUSDT", "MACDX", 1000.0)
+
+                    MockSG.assert_called_once_with("MACDX", mock_config)
+
+
 class TestBacktestSimulatorAsExecutor:
     """Test BacktestSimulator as a BaseCommandExecutor."""
 

@@ -27,13 +27,14 @@ class BacktestEngine:
         self.symbol = symbol
         self.strategy = strategy
         self.config = self._load_config()
-        self.timeframe = self.config.get("timeframe", "15m")
+        preset = self.config.get("preset", {})
+        self.timeframe = preset.get("timeframe", "15m")
         self.data_loader = DataLoader(symbol, self.timeframe)
-        self.signal_generator = SignalGenerator(strategy)
+        self.signal_generator = SignalGenerator(strategy, self.config)
         self.simulator = BacktestSimulator(
             initial_balance=initial_balance,
-            leverage=self.config.get("leverage", 5.0),
-            position_size_percent=self.config.get("position_size_percent", 0.1)
+            leverage=preset.get("leverage", 5.0),
+            position_size_percent=self.config.get("position", {}).get("size_percent", 10) / 100.0
         )
         self._setup_logging()
 

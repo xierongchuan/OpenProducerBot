@@ -21,9 +21,19 @@ podman run --rm \
     --userns=keep-id \
     --security-opt label=disable \
     $ENV_FILE_OPT \
-    -v .:/app \
+    -v .:/app:Z \
     -w /app \
     python:3.12-slim sh -c "
-pip install -q requests pandas matplotlib &&
+pip install requests pandas matplotlib 2>&1 | tail -1 &&
 python -m scripts.run_backtest --symbol $SYMBOL --strategy $STRATEGY --balance $BALANCE
 "
+
+EXIT_CODE=$?
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "❌ Бэктест завершился с ошибкой (код $EXIT_CODE)"
+    echo "   Возможные причины:"
+    echo "   1. SELinux блокирует сеть — попробуйте: sudo setenforce 0"
+    echo "   2. Нет API ключей — проверьте .env файл"
+    echo "   3. Нет подключения к интернету"
+fi

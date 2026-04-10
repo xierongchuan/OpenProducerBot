@@ -21,8 +21,13 @@ class BacktestEngine:
     """
     Основной движок бэктеста, объединяет все компоненты.
 
-    Работает через единый TradeCommand DTO:
-    SignalGenerator → TradeCommand → BacktestSimulator.execute()
+    Работает через единый TradeCommand DTO — strategy-agnostic:
+    SignalGenerator.generate_signal(position=...) → TradeCommand → BacktestSimulator.execute()
+
+    SignalGenerator является адаптером, который:
+    - Генерирует сигналы входа через стратегию (generate)
+    - Проверяет условия выхода через стратегию (should_close)
+    - Возвращает единый dict {action: BUY/SELL/HOLD/CLOSE, ...}
 
     BacktestSimulator реализует BaseCommandExecutor, поэтому
     тот же интерфейс исполнения используется и в реальной торговле,
@@ -39,17 +44,6 @@ class BacktestEngine:
         self.timeframe = preset.get("timeframe", "15m")
         self.data_loader = DataLoader(symbol, self.timeframe)
         self.signal_generator = SignalGenerator(strategy, self.config)
-
-        # Создаём MacdxSignalGenerator для использования should_close()
-        # чтобы бэктест использовал ту же логику выходов, что и live
-        self._macdx_signal_gen = None
-        self._exit_context: Dict[str, Any] = {}
-        if strategy.upper() == "MACDX":
-            try:
-                from ..core.signals.macdx import MacdxSignalGenerator
-                self._macdx_signal_gen = MacdxSignalGenerator(self.config)
-            except ImportError:
-                pass
 
         # Capital: CLI arg > config/backtest.json > 1000.0
         capital_config = self.backtest_config.get("capital", {})
@@ -102,14 +96,18 @@ class BacktestEngine:
 
     def run(self) -> Dict[str, Any]:
         """
-        Запускает бэктест через единый TradeCommand поток.
+        Запускает бэктест через единый strategy-agnostic TradeCommand поток.
 
         Для каждой свечи:
         1. Проверить SL/TP → TradeCommand.close()
         2. Обновить unrealized P&L
-        3. Сгенерировать сигнал → TradeCommand
+        3. Сгенерировать сигнал (entry + exit через единый generate_signal) → TradeCommand
         4. Исполнить через BacktestSimulator.execute()
-        5. Проверить стратегические условия выхода
+
+        Выходы из позиции обрабатываются ВНУТРИ SignalGenerator.generate_signal():
+        если есть открытая позиция, SignalGenerator сначала проверяет should_close()
+        стратегии и возвращает {action: "CLOSE"} если нужно закрыть.
+        Движок не знает о деталях стратегии — только о TradeCommand DTO.
         """
         try:
             info(f"🚀 Запуск бэктеста для {self.symbol} стратегии {self.strategy}")
@@ -129,7 +127,7 @@ class BacktestEngine:
                 sl_tp_cmd = self.simulator.check_sl_tp_command(self.symbol, current_price)
                 if sl_tp_cmd:
                     self.simulator.execute(sl_tp_cmd)
-                    self._exit_context.clear()
+                    self.signal_generator.reset_exit_context()
                     self._record_equity(kline_time, current_price)
                     self._record_trade_marker(kline_time, current_price, "close", sl_tp_cmd.reason or "SL/TP")
                     continue
@@ -137,29 +135,25 @@ class BacktestEngine:
                 # 2. Обновить unrealized P&L (без SL/TP — уже проверено выше)
                 self.simulator.update_unrealized_pnl({self.symbol: current_price})
 
-                # 3. Сгенерировать сигнал и конвертировать в TradeCommand
+                # 3. Сгенерировать сигнал (entry + exit) через единый интерфейс
+                #    SignalGenerator сам проверит should_close() если есть позиция
                 try:
-                    signal = self.signal_generator.generate_signal(klines, i)
+                    position = self.simulator.positions.get(self.symbol)
+                    signal = self.signal_generator.generate_signal(klines, i, position=position)
                     command = self._signal_to_command(signal, current_price)
                     result = self.simulator.execute(command)
 
                     if command.action.is_entry:
-                        self._exit_context.clear()
+                        self.signal_generator.reset_exit_context()
                         side = "BUY" if command.action == TradeAction.BUY else "SELL"
                         self._record_trade_marker(kline_time, current_price, side.lower(), signal.get("reason", ""))
                         info(f"📈 {command.action.value.upper()} на {self.symbol} по {current_price:.2f}")
+                    elif command.action.is_exit:
+                        self.signal_generator.reset_exit_context()
+                        self._record_trade_marker(kline_time, current_price, "close", signal.get("reason", "strategy"))
                 except Exception as e:
                     error(f"Ошибка на индексе {i}: {e}")
                     continue
-
-                # 4. Проверить стратегические условия выхода → TradeCommand
-                #    Используем кэшированные индикаторы из generate_signal,
-                #    чтобы не пересчитывать их дважды
-                exit_cmd = self._check_exit_command(klines, i, current_price,
-                                                     cached_indicators=self.signal_generator.last_indicators)
-                if exit_cmd:
-                    self.simulator.execute(exit_cmd)
-                    self._record_trade_marker(kline_time, current_price, "close", exit_cmd.reason or "strategy")
 
                 self._record_equity(kline_time, current_price)
 
@@ -182,10 +176,24 @@ class BacktestEngine:
             return {}
 
     def _signal_to_command(self, signal: Dict[str, Any], current_price: float) -> TradeCommand:
-        """Конвертирует сигнал от SignalGenerator в TradeCommand."""
+        """
+        Конвертирует сигнал от SignalGenerator в TradeCommand.
+
+        Поддерживает все типы действий:
+        - BUY/SELL → TradeCommand.entry()
+        - CLOSE → TradeCommand.close()
+        - HOLD → TradeCommand.hold()
+        """
         action = signal.get("action", "HOLD")
 
-        if action in ("BUY", "SELL"):
+        if action == "CLOSE":
+            return TradeCommand.close(
+                symbol=self.symbol,
+                current_price=current_price,
+                reason=signal.get("reason", "Strategy exit"),
+                strategy=self.strategy,
+            )
+        elif action in ("BUY", "SELL"):
             return TradeCommand.entry(
                 symbol=self.symbol,
                 side=action,
@@ -202,85 +210,6 @@ class BacktestEngine:
                 reason=signal.get("reason", ""),
                 strategy=self.strategy,
             )
-
-    def _check_exit_command(self, klines, index: int, current_price: float,
-                            cached_indicators: Optional[Dict[str, Any]] = None) -> Optional[TradeCommand]:
-        """Проверяет стратегические условия выхода и возвращает TradeCommand.close() или None.
-
-        Для MACDX стратегии делегирует в MacdxSignalGenerator.should_close(),
-        чтобы бэктест использовал ту же 7-уровневую систему выходов, что и live.
-        """
-        if self.symbol not in self.simulator.positions:
-            return None
-
-        position = self.simulator.positions[self.symbol]
-        side = position["side"]
-
-        # Для MACDX используем полноценную систему выходов из live-кода
-        if self._macdx_signal_gen is not None:
-            indicators = cached_indicators or self.signal_generator.calculate_indicators(klines, index)
-
-            # Формируем analysis dict совместимый с should_close()
-            analysis = dict(indicators)
-            analysis["current_price"] = current_price
-
-            # Добавляем open_prices если отсутствуют (нужны для impulse candle detection)
-            if "open_prices" not in analysis:
-                analysis["open_prices"] = [k["openPrice"] for k in klines[:index + 1]]
-
-            # Формируем position dict совместимый с should_close()
-            bt_position = {
-                "type": side,
-                "entry": position["entry_price"],
-                "avgPrice": position["entry_price"],
-            }
-
-            close_signal = self._macdx_signal_gen.should_close(
-                analysis, bt_position, exit_context=self._exit_context
-            )
-
-            if close_signal.get("should_close"):
-                reason = close_signal.get("reason", "Strategy exit")
-                self._exit_context.clear()
-                return TradeCommand.close(
-                    symbol=self.symbol, current_price=current_price,
-                    reason=reason, strategy=self.strategy,
-                )
-            return None
-
-        # Fallback для не-MACDX стратегий: простые правила
-        indicators = cached_indicators or self.signal_generator.calculate_indicators(klines, index)
-        rsi = indicators.get("rsi", 50)
-        macd_hist = indicators.get("macd_hist", 0)
-
-        exit_rules = self.backtest_config.get("exit_rules", {})
-
-        # MACD reversal
-        macd_rules = exit_rules.get("macd_reversal", {})
-        if macd_rules.get("enabled", True):
-            profit_threshold = macd_rules.get("profit_threshold", 0.005)
-            loss_threshold = macd_rules.get("loss_threshold", -0.01)
-            macd_hist_prev = position.get("macd_hist_prev", 0)
-            if (side == "LONG" and macd_hist < 0 and macd_hist_prev >= 0) or \
-               (side == "SHORT" and macd_hist > 0 and macd_hist_prev <= 0):
-                if position["unrealized_pnl"] >= profit_threshold or position["unrealized_pnl"] < loss_threshold:
-                    return TradeCommand.close(
-                        symbol=self.symbol, current_price=current_price,
-                        reason="MACD reversal", strategy=self.strategy,
-                    )
-
-        # RSI extreme
-        rsi_rules = exit_rules.get("rsi_extreme", {})
-        if rsi_rules.get("enabled", True):
-            long_exit = rsi_rules.get("long_exit_above", 80)
-            short_exit = rsi_rules.get("short_exit_below", 20)
-            if (side == "LONG" and rsi > long_exit) or (side == "SHORT" and rsi < short_exit):
-                return TradeCommand.close(
-                    symbol=self.symbol, current_price=current_price,
-                    reason="RSI extreme", strategy=self.strategy,
-                )
-
-        return None
 
     def _record_equity(self, time_str: str, current_price: float):
         """Записывает точку кривой эквити."""

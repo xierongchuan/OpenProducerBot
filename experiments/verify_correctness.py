@@ -46,27 +46,22 @@ def test_rsi_series_vs_naive():
     # Оптимизированные RSI values
     optimized_values = sg._calculate_rsi_series(closes, 14)
 
-    # Первое значение должно совпадать точно (оба используют SMA)
-    assert abs(naive_values[0] - optimized_values[0]) < 0.001, \
-        f"Первый RSI не совпадает: naive={naive_values[0]:.4f} vs opt={optimized_values[0]:.4f}"
-    print(f"✅ Первый RSI совпадает: {optimized_values[0]:.4f}")
-
-    # Остальные могут слегка отличаться (Wilder's smoothing vs SMA window)
-    # Это ожидаемо — Wilder's более стабилен и является стандартом
-    max_diff = 0
-    for i in range(len(naive_values)):
-        diff = abs(naive_values[i] - optimized_values[i])
-        max_diff = max(max_diff, diff)
-
-    print(f"✅ Максимальное отклонение RSI: {max_diff:.4f}")
-    print(f"   (Wilder's smoothing vs SMA-window — разница ожидаема и допустима)")
-    # Оба метода стандартны; различие — в методе сглаживания
-    # Wilder's используется в TradingView и большинстве платформ
-
-    # Проверяем что длины совпадают
+    # Все значения должны совпадать точно (оба используют SMA скользящего окна)
     assert len(naive_values) == len(optimized_values), \
         f"Длины не совпадают: {len(naive_values)} vs {len(optimized_values)}"
     print(f"✅ Длины серий совпадают: {len(optimized_values)}")
+
+    max_diff = 0
+    mismatches = 0
+    for i in range(len(naive_values)):
+        diff = abs(naive_values[i] - optimized_values[i])
+        max_diff = max(max_diff, diff)
+        if diff > 1e-10:
+            mismatches += 1
+
+    assert mismatches == 0, \
+        f"RSI не совпадает в {mismatches} точках, макс. отклонение: {max_diff:.6f}"
+    print(f"✅ RSI совпадает точно во всех {len(optimized_values)} точках (макс. отклонение: {max_diff:.2e})")
 
 
 def test_macd_with_prev():

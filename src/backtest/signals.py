@@ -121,40 +121,44 @@ class SignalGenerator:
         """
         Инкрементальный расчёт RSI серии за один проход O(n).
 
-        Использует метод Wilder's smoothing: после первого SMA-окна
-        каждое следующее значение обновляется инкрементально.
+        Использует скользящее окно (SMA последних `period` изменений),
+        что совпадает с оригинальным алгоритмом _calculate_rsi,
+        но без повторного расчёта на каждом подмассиве.
         """
         n = len(closes)
         if n < period + 1:
             return []
 
-        values = []
-
-        # Первый RSI: SMA за period
-        avg_gain = 0.0
-        avg_loss = 0.0
-        for i in range(1, period + 1):
+        # Предварительно вычислить все gains и losses
+        gains = [0.0] * n
+        losses = [0.0] * n
+        for i in range(1, n):
             change = closes[i] - closes[i - 1]
             if change > 0:
-                avg_gain += change
+                gains[i] = change
             else:
-                avg_loss -= change
-        avg_gain /= period
-        avg_loss /= period
+                losses[i] = -change
 
+        values = []
+
+        # Первое окно: сумма gains[1..period] и losses[1..period]
+        sum_gain = sum(gains[1:period + 1])
+        sum_loss = sum(losses[1:period + 1])
+
+        avg_gain = sum_gain / period
+        avg_loss = sum_loss / period
         if avg_loss == 0:
             values.append(100.0)
         else:
             rs = avg_gain / avg_loss
             values.append(100.0 - (100.0 / (1.0 + rs)))
 
-        # Инкрементальный расчёт по Wilder's smoothing
+        # Скользящее окно для последующих значений
         for i in range(period + 1, n):
-            change = closes[i] - closes[i - 1]
-            gain = change if change > 0 else 0.0
-            loss = -change if change < 0 else 0.0
-            avg_gain = (avg_gain * (period - 1) + gain) / period
-            avg_loss = (avg_loss * (period - 1) + loss) / period
+            sum_gain += gains[i] - gains[i - period]
+            sum_loss += losses[i] - losses[i - period]
+            avg_gain = sum_gain / period
+            avg_loss = sum_loss / period
             if avg_loss == 0:
                 values.append(100.0)
             else:

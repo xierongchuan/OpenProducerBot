@@ -6,7 +6,7 @@ Verifies:
 - Factory methods (hold, close, entry)
 - Backward compatibility with prediction dict format
 - TradeResult creation
-- BacktestCommandExecutor integration
+- BacktestSimulator as BaseCommandExecutor
 """
 
 import json
@@ -311,51 +311,26 @@ class TestTradeResult:
         assert d["command"]["action"] == "hold"
 
 
-class TestBacktestExecutor:
-    """Test that strategies can be run with a backtesting executor."""
+class TestBacktestSimulatorAsExecutor:
+    """Test BacktestSimulator as a BaseCommandExecutor."""
 
-    def test_backtest_executor_receives_commands(self):
-        """Simulate a backtesting executor that collects commands."""
+    def test_implements_base_executor(self):
+        """BacktestSimulator is a proper BaseCommandExecutor."""
         from src.core.commands.executor import BaseCommandExecutor
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0)
+        assert isinstance(bt, BaseCommandExecutor)
 
-        collected_commands = []
-
-        class BacktestExecutor(BaseCommandExecutor):
-            def __init__(self):
-                self.balance = 10000.0
-                self.positions = {}
-
-            def execute(self, command):
-                collected_commands.append(command)
-                if command.action.is_entry:
-                    self.positions[command.symbol] = {
-                        "side": command.action.value,
-                        "price": command.current_price,
-                        "sl": command.stop_loss,
-                        "tp": command.take_profit,
-                    }
-                    return TradeResult(
-                        success=True, command=command,
-                        executed_price=command.current_price,
-                        message="Backtest: position opened",
-                    )
-                elif command.action.is_exit:
-                    if command.symbol in self.positions:
-                        del self.positions[command.symbol]
-                    return TradeResult(
-                        success=True, command=command,
-                        message="Backtest: position closed",
-                    )
-                return TradeResult(success=True, command=command, message="Backtest: hold")
-
-        # Simulate a strategy sending commands
-        bt = BacktestExecutor()
+    def test_execute_entry_and_close(self):
+        """Full lifecycle: entry → hold → close."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0, leverage=5.0, position_size_percent=0.1)
 
         # 1. Entry
         cmd1 = TradeCommand.entry(
             symbol="BTC-USDT", side="BUY", current_price=50000.0,
             confidence=0.85, stop_loss=49000.0, take_profit=52000.0,
-            strategy="MACDX",
+            size_pct=10.0, strategy="MACDX",
         )
         r1 = bt.execute(cmd1)
         assert r1.success
@@ -373,10 +348,110 @@ class TestBacktestExecutor:
         assert r3.success
         assert "BTC-USDT" not in bt.positions
 
-        assert len(collected_commands) == 3
-        assert collected_commands[0].action == TradeAction.BUY
-        assert collected_commands[1].action == TradeAction.HOLD
-        assert collected_commands[2].action == TradeAction.CLOSE
+    def test_execute_duplicate_entry_fails(self):
+        """Cannot open a second position for the same symbol."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0)
+
+        cmd1 = TradeCommand.entry(symbol="BTC-USDT", side="BUY", current_price=50000.0, confidence=0.8)
+        r1 = bt.execute(cmd1)
+        assert r1.success
+
+        cmd2 = TradeCommand.entry(symbol="BTC-USDT", side="SELL", current_price=50100.0, confidence=0.7)
+        r2 = bt.execute(cmd2)
+        assert not r2.success
+
+    def test_execute_close_without_position_fails(self):
+        """Cannot close a position that doesn't exist."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0)
+
+        cmd = TradeCommand.close(symbol="BTC-USDT", current_price=50000.0, reason="test")
+        r = bt.execute(cmd)
+        assert not r.success
+
+    def test_pnl_calculation_long(self):
+        """Verify PnL is calculated correctly for a profitable LONG."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0, leverage=5.0, position_size_percent=0.1)
+
+        bt.execute(TradeCommand.entry(
+            symbol="BTC-USDT", side="BUY", current_price=50000.0,
+            confidence=0.8, size_pct=10.0,
+        ))
+        bt.execute(TradeCommand.close(
+            symbol="BTC-USDT", current_price=51000.0, reason="profit",
+        ))
+
+        metrics = bt.get_metrics()
+        assert metrics["total_trades"] == 1
+        assert metrics["total_pnl"] > 0  # Should be profitable
+
+    def test_pnl_calculation_short(self):
+        """Verify PnL is calculated correctly for a profitable SHORT."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0, leverage=5.0, position_size_percent=0.1)
+
+        bt.execute(TradeCommand.entry(
+            symbol="BTC-USDT", side="SELL", current_price=50000.0,
+            confidence=0.8, size_pct=10.0,
+        ))
+        bt.execute(TradeCommand.close(
+            symbol="BTC-USDT", current_price=49000.0, reason="profit",
+        ))
+
+        metrics = bt.get_metrics()
+        assert metrics["total_trades"] == 1
+        assert metrics["total_pnl"] > 0  # Should be profitable
+
+    def test_check_sl_tp_command(self):
+        """SL/TP check returns TradeCommand.close() when triggered."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0)
+
+        bt.execute(TradeCommand.entry(
+            symbol="BTC-USDT", side="BUY", current_price=50000.0,
+            confidence=0.8, stop_loss=49000.0, take_profit=52000.0,
+        ))
+
+        # Price above entry but below TP — no trigger
+        cmd = bt.check_sl_tp_command("BTC-USDT", 50500.0)
+        assert cmd is None
+
+        # Price hits SL
+        cmd = bt.check_sl_tp_command("BTC-USDT", 48500.0)
+        assert cmd is not None
+        assert cmd.action == TradeAction.CLOSE
+        assert "SL" in cmd.reason
+
+    def test_check_sl_tp_command_tp_hit(self):
+        """TP hit returns close command."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0)
+
+        bt.execute(TradeCommand.entry(
+            symbol="BTC-USDT", side="BUY", current_price=50000.0,
+            confidence=0.8, stop_loss=49000.0, take_profit=52000.0,
+        ))
+
+        cmd = bt.check_sl_tp_command("BTC-USDT", 53000.0)
+        assert cmd is not None
+        assert cmd.action == TradeAction.CLOSE
+        assert "TP" in cmd.reason
+
+    def test_command_history_tracked(self):
+        """All commands are recorded in history."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0)
+
+        bt.execute(TradeCommand.entry(symbol="BTC-USDT", side="BUY", current_price=50000.0, confidence=0.8))
+        bt.execute(TradeCommand.hold(symbol="BTC-USDT", current_price=50500.0))
+        bt.execute(TradeCommand.close(symbol="BTC-USDT", current_price=51000.0))
+
+        assert len(bt.command_history) == 3
+        assert bt.command_history[0].action == TradeAction.BUY
+        assert bt.command_history[1].action == TradeAction.HOLD
+        assert bt.command_history[2].action == TradeAction.CLOSE
 
     def test_commands_serializable_for_replay(self):
         """Verify that command history can be serialized and replayed."""
@@ -397,3 +472,30 @@ class TestBacktestExecutor:
         assert restored[1].action == TradeAction.HOLD
         assert restored[2].action == TradeAction.CLOSE
         assert restored[2].reason == "Exit"
+
+    def test_sell_entry_creates_short_position(self):
+        """SELL command creates a SHORT position internally."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0)
+
+        bt.execute(TradeCommand.entry(
+            symbol="BTC-USDT", side="SELL", current_price=50000.0,
+            confidence=0.8, stop_loss=51000.0, take_profit=48000.0,
+        ))
+
+        assert "BTC-USDT" in bt.positions
+        assert bt.positions["BTC-USDT"]["side"] == "SHORT"
+
+    def test_sl_tp_from_command_used(self):
+        """SL/TP from TradeCommand are passed to the position."""
+        from src.backtest.simulator import BacktestSimulator
+        bt = BacktestSimulator(initial_balance=10000.0)
+
+        bt.execute(TradeCommand.entry(
+            symbol="BTC-USDT", side="BUY", current_price=50000.0,
+            confidence=0.8, stop_loss=49500.0, take_profit=51500.0,
+        ))
+
+        pos = bt.positions["BTC-USDT"]
+        assert pos["sl_price"] == 49500.0
+        assert pos["tp_price"] == 51500.0

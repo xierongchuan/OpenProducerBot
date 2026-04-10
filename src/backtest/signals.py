@@ -146,12 +146,26 @@ class SignalGenerator:
     def _calculate_macd(self, closes: List[float]) -> Tuple[float, float, float]:
         if len(closes) < 26:
             return 0, 0, 0
-        ema12 = self._calculate_ema(closes, 12)
-        ema26 = self._calculate_ema(closes, 26)
-        macd_line = ema12 - ema26
-        macd_signal = self._calculate_ema([macd_line] * len(closes), 9)  # Упрощено
+        # Рассчитать серию MACD line для корректного EMA сигнальной линии
+        macd_series = self._calculate_macd_series(closes)
+        if not macd_series:
+            return 0, 0, 0
+        macd_line = macd_series[-1]
+        macd_signal = self._calculate_ema(macd_series, 9) if len(macd_series) >= 9 else macd_line
         macd_hist = macd_line - macd_signal
         return macd_line, macd_signal, macd_hist
+
+    def _calculate_macd_series(self, closes: List[float]) -> List[float]:
+        """Рассчитывает серию MACD line для всех точек данных."""
+        if len(closes) < 26:
+            return []
+        series = []
+        for i in range(26, len(closes) + 1):
+            subset = closes[:i]
+            ema12 = self._calculate_ema(subset, 12)
+            ema26 = self._calculate_ema(subset, 26)
+            series.append(ema12 - ema26)
+        return series
 
     def _calculate_macd_hist_prev(self, closes: List[float]) -> float:
         macd_line, macd_signal, _ = self._calculate_macd(closes)

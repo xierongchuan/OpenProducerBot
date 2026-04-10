@@ -151,6 +151,18 @@ class BacktestEngine:
                     elif command.action.is_exit:
                         self.signal_generator.reset_exit_context()
                         self._record_trade_marker(kline_time, current_price, "close", signal.get("reason", "strategy"))
+                        # После закрытия — сразу проверить сигнал для новой позиции (если включено в конфиге)
+                        reentry_enabled = self.config.get("features", {}).get("enable_immediate_reentry_after_exit", True)
+                        if reentry_enabled:
+                            position = None
+                            signal2 = self.signal_generator.generate_signal(klines, i, position=position)
+                            command2 = self._signal_to_command(signal2, current_price)
+                            if command2.action.is_entry:
+                                result2 = self.simulator.execute(command2)
+                                side = "BUY" if command2.action == TradeAction.BUY else "SELL"
+                                self.signal_generator.reset_exit_context()
+                                self._record_trade_marker(kline_time, current_price, side.lower(), signal2.get("reason", ""))
+                                info(f"📈 {command2.action.value.upper()} на {self.symbol} по {current_price:.2f} (after exit)")
                 except Exception as e:
                     error(f"Ошибка на индексе {i}: {e}")
                     continue

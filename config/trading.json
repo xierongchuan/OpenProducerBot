@@ -21,7 +21,8 @@
     "enable_parallel_mode": true,
     "enable_ai_skip_on_rsi": false,
     "enable_low_volume_filter": false,
-    "aggressive_mode": false
+    "aggressive_mode": false,
+    "enable_immediate_reentry_after_exit": false
   },
 
   "aggressive_settings": {

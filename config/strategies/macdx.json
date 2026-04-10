@@ -10,7 +10,7 @@
     "position_check_interval": 15,
     "atr_sl_mult": 4.0,
     "atr_tp_mult": 7.0,
-    "leverage": 6,
+    "leverage": 7,
     "cooldown_after_close_hours": 0.5
   },
 

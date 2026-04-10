@@ -44,7 +44,7 @@ class SignalGenerator:
         ema21 = self._calculate_ema(closes, 21)
 
         # MACD (12,26,9) — с hist_prev за один вызов
-        macd_line, macd_signal, macd_hist, macd_hist_prev = self._calculate_macd_with_prev(closes)
+        macd_line, macd_signal, macd_hist, macd_hist_prev, macd_hist_prev_prev = self._calculate_macd_with_prev(closes)
 
         # BB width
         bb_width = self._calculate_bb_width(closes, 20)
@@ -70,6 +70,7 @@ class SignalGenerator:
             "macd_signal": macd_signal,
             "macd_hist": macd_hist,
             "macd_hist_prev": macd_hist_prev,
+            "macd_hist_2prev": macd_hist_prev_prev,
             "bb_width": bb_width,
             "adx": adx,
             "atr": atr,
@@ -279,7 +280,7 @@ class SignalGenerator:
             series.append(ema)
         return series
 
-    def _calculate_macd_with_prev(self, closes: List[float]) -> Tuple[float, float, float, float]:
+    def _calculate_macd_with_prev(self, closes: List[float]) -> Tuple[float, float, float, float, float]:
         """
         Рассчитывает MACD line, signal, histogram и предыдущий histogram за один проход.
 
@@ -287,7 +288,7 @@ class SignalGenerator:
         Возвращает (macd_line, macd_signal, macd_hist, macd_hist_prev).
         """
         if len(closes) < 26:
-            return 0, 0, 0, 0
+            return 0, 0, 0, 0, 0
 
         # EMA12 и EMA26 серии — O(n) каждая
         ema12_series = self._calculate_ema_series(closes, 12)
@@ -302,7 +303,7 @@ class SignalGenerator:
             macd_series.append(ema12_series[i + offset] - ema26_series[i])
 
         if not macd_series:
-            return 0, 0, 0, 0
+            return 0, 0, 0, 0, 0
 
         macd_line = macd_series[-1]
 
@@ -332,7 +333,20 @@ class SignalGenerator:
         else:
             macd_hist_prev = 0
 
-        return macd_line, macd_signal, macd_hist, macd_hist_prev
+        # Histogram 2 свечи назад
+        if len(macd_series) >= 3:
+            prev_prev_series = macd_series[:-2]
+            if len(prev_prev_series) >= 9:
+                signal_ema_prev_prev = sum(prev_prev_series[:9]) / 9
+                for val in prev_prev_series[9:]:
+                    signal_ema_prev_prev = (val * signal_multiplier) + (signal_ema_prev_prev * (1 - signal_multiplier))
+                macd_hist_prev_prev = prev_prev_series[-1] - signal_ema_prev_prev
+            else:
+                macd_hist_prev_prev = 0
+        else:
+            macd_hist_prev_prev = 0
+
+        return macd_line, macd_signal, macd_hist, macd_hist_prev, macd_hist_prev_prev
 
     def _calculate_bb_width(self, closes: List[float], period: int) -> float:
         if len(closes) < period:

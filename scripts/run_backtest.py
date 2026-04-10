@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from src.backtest.engine import BacktestEngine
-from src.config_loader import load_backtest_config
+from src.config_loader import load_backtest_config, clear_config_cache
 from src.utils.logger import error, info
 
 
@@ -53,6 +53,7 @@ def main():
         )
 
         try:
+            clear_config_cache()
             engine = BacktestEngine(args.symbol, args.strategy, args.balance)
             result = engine.run()
         except Exception as e:

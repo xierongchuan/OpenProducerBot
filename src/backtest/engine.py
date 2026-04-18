@@ -55,10 +55,12 @@ class BacktestEngine:
         maker_rate = commission_config.get("maker_rate", 0.0002)
         taker_rate = commission_config.get("taker_rate", 0.0005)
 
-        # Default SL/TP from config
+        # Default SL/TP: приоритет - preset стратегии → backtest.json
         defaults_config = self.backtest_config.get("defaults", {})
-        default_sl = defaults_config.get("sl_percent", 0.01)
-        default_tp = defaults_config.get("tp_percent", 0.03)
+        sl_from_config = preset.get("sl_percent")
+        tp_from_config = preset.get("tp_percent")
+        default_sl = sl_from_config if sl_from_config is not None else defaults_config.get("sl_percent", 1.0)
+        default_tp = tp_from_config if tp_from_config is not None else defaults_config.get("tp_percent", 5.0)
 
         self.simulator = BacktestSimulator(
             initial_balance=balance,
@@ -66,8 +68,8 @@ class BacktestEngine:
             position_size_percent=self.config.get("position", {}).get("size_percent", 10) / 100.0,
             maker_rate=maker_rate,
             taker_rate=taker_rate,
-            default_sl_percent=default_sl,
-            default_tp_percent=default_tp,
+            default_sl_percent=default_sl / 100,  # Конвертируем % в долю
+            default_tp_percent=default_tp / 100,
             capital_mode=capital_mode,
         )
         # Equity tracking for chart generation
@@ -214,6 +216,8 @@ class BacktestEngine:
                 current_price=current_price,
                 confidence=signal.get("score", 0) / 10.0,
                 reason=signal.get("reason", ""),
+                stop_loss=signal.get("stop_loss"),
+                take_profit=signal.get("take_profit"),
                 strategy=self.strategy,
                 score=signal.get("score", 0),
             )

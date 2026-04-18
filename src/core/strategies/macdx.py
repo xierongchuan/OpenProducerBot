@@ -203,10 +203,19 @@ class MacdxPipeline(StrategyPipeline):
     def _calculate_sl_tp_and_size(self, symbol, signal, current_price, analysis, support, resistance, regime, quality):
         sl, tp, size_pct = None, None, None
         try:
+            # Дополняем regime данными из preset
+            sl_percent = self._macdx_settings.get("preset", {}).get("sl_percent")
+            tp_percent = self._macdx_settings.get("preset", {}).get("tp_percent")
+            regime_params = dict(regime) if regime else {}
+            if sl_percent is not None:
+                regime_params["sl_percent"] = sl_percent
+            if tp_percent is not None:
+                regime_params["tp_percent"] = tp_percent
+
             sl_tp = calculate_dynamic_sl_tp(
                 signal=signal, current_price=current_price,
                 atr=analysis.get("atr", 0), support=support, resistance=resistance,
-                regime=regime if regime else {}, quality=quality
+                regime=regime_params, quality=quality
             )
             sl = sl_tp["stop_loss"]
             tp = sl_tp["take_profit"]

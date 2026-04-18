@@ -41,24 +41,35 @@ def calculate_dynamic_sl_tp(
             - risk_pct: Риск в процентах от цены
             - reward_pct: Потенциальная прибыль в процентах
     """
-    # Получаем мультипликаторы из режима рынка
-    # Используем значения из HYBRID config по умолчанию: atr_sl_mult=1.5, atr_tp_mult=3
+    # Получаем проценты или мультипликаторы из regime
+    # Приоритет: sl_percent/tp_percent (новое) → sl_multiplier/tp_multiplier (legacy ATR-based)
+    sl_percent = regime.get("sl_percent")
+    tp_percent = regime.get("tp_percent")
     sl_mult = regime.get("sl_multiplier", 1.5)
     tp_mult = regime.get("tp_multiplier", 3.0)
 
+    use_percent = sl_percent is not None and tp_percent is not None
+
     # Корректировка на основе качества сигнала
-    # Высокое качество → более узкий SL (0.8-1.0)
     quality_sl_adj = 1.0 - (quality * 0.2)
-    # Высокое качество → более широкий TP (1.0-1.3)
     quality_tp_adj = 1.0 + (quality * 0.3)
 
     info(f"🎯 Расчет SL/TP | Signal: {signal}, Price: {current_price:.4f}, ATR: {atr:.4f}")
-    info(f"   Режим: SL_mult={sl_mult}, TP_mult={tp_mult} | Quality: {quality:.2f} (SL_adj={quality_sl_adj:.2f}, TP_adj={quality_tp_adj:.2f})")
+    if use_percent:
+        info(f"   Метод: Проценты | SL={sl_percent}% TP={tp_percent}% | Quality: {quality:.2f}")
+    else:
+        info(f"   Метод: ATR | SL_mult={sl_mult}, TP_mult={tp_mult} | Quality: {quality:.2f} (SL_adj={quality_sl_adj:.2f}, TP_adj={quality_tp_adj:.2f})")
 
     if signal == "BUY":
-        # Базовые уровни на основе ATR
-        atr_sl = current_price - (atr * sl_mult * quality_sl_adj)
-        atr_tp = current_price + (atr * tp_mult * quality_tp_adj)
+        # Базовые уровни
+        if use_percent:
+            percent_sl = sl_percent * quality_sl_adj
+            percent_tp = tp_percent * quality_tp_adj
+            atr_sl = current_price * (1 - percent_sl / 100)
+            atr_tp = current_price * (1 + percent_tp / 100)
+        else:
+            atr_sl = current_price - (atr * sl_mult * quality_sl_adj)
+            atr_tp = current_price + (atr * tp_mult * quality_tp_adj)
 
         # Валидация SL по уровню поддержки (только если поддержка НИЖЕ текущей цены)
         if support > 0 and support < current_price and support > atr_sl:
@@ -70,51 +81,75 @@ def calculate_dynamic_sl_tp(
 
         # Sanity check: SL must be below current price for BUY
         if sl >= current_price:
-            sl = current_price - (atr * sl_mult)
+            if use_percent:
+                sl = current_price * (1 - sl_percent / 100)
+            else:
+                sl = current_price - (atr * sl_mult)
             info(f"   SL sanity fallback (BUY): SL was >= price, reset to {sl:.4f}")
 
         # Валидация TP по уровню сопротивления (только если сопротивление ВЫШЕ текущей цены)
         if resistance > 0 and resistance > current_price and resistance < atr_tp:
-            # Сопротивление ниже базового TP → устанавливаем TP с буфером до сопротивления
-            tp = resistance - (atr * 0.1)
+            if use_percent:
+                tp = resistance - (current_price * tp_percent / 100 * 0.1)
+            else:
+                tp = resistance - (atr * 0.1)
             info(f"   TP скорректирован по сопротивлению: {atr_tp:.4f} → {tp:.4f} (resistance={resistance:.4f})")
         else:
             tp = atr_tp
 
         # Sanity check: TP must be above current price for BUY
         if tp <= current_price:
-            tp = current_price + (atr * tp_mult)
+            if use_percent:
+                tp = current_price * (1 + tp_percent / 100)
+            else:
+                tp = current_price + (atr * tp_mult)
             info(f"   TP sanity fallback (BUY): TP was <= price, reset to {tp:.4f}")
 
     elif signal == "SELL":
-        # Базовые уровни на основе ATR (зеркальная логика)
-        atr_sl = current_price + (atr * sl_mult * quality_sl_adj)
-        atr_tp = current_price - (atr * tp_mult * quality_tp_adj)
+        # Базовые уровни
+        if use_percent:
+            percent_sl = sl_percent * quality_sl_adj
+            percent_tp = tp_percent * quality_tp_adj
+            atr_sl = current_price * (1 + percent_sl / 100)
+            atr_tp = current_price * (1 - percent_tp / 100)
+        else:
+            atr_sl = current_price + (atr * sl_mult * quality_sl_adj)
+            atr_tp = current_price - (atr * tp_mult * quality_tp_adj)
 
         # Валидация SL по уровню сопротивления (только если сопротивление ВЫШЕ текущей цены)
         if resistance > 0 and resistance > current_price and resistance < atr_sl:
-            # Сопротивление ниже базового SL → устанавливаем SL с буфером выше сопротивления
-            sl = resistance + (atr * 0.3)
+            if use_percent:
+                sl = resistance + (current_price * sl_percent / 100 * 0.1)
+            else:
+                sl = resistance + (atr * 0.3)
             info(f"   SL скорректирован по сопротивлению: {atr_sl:.4f} → {sl:.4f} (resistance={resistance:.4f})")
         else:
             sl = atr_sl
 
         # Sanity check: SL must be above current price for SELL
         if sl <= current_price:
-            sl = current_price + (atr * sl_mult)
+            if use_percent:
+                sl = current_price * (1 + sl_percent / 100)
+            else:
+                sl = current_price + (atr * sl_mult)
             info(f"   SL sanity fallback (SELL): SL was <= price, reset to {sl:.4f}")
 
         # Валидация TP по уровню поддержки (только если поддержка НИЖЕ текущей цены)
         if support > 0 and support < current_price and support > atr_tp:
-            # Поддержка выше базового TP → устанавливаем TP с буфером до поддержки
-            tp = support + (atr * 0.1)
+            if use_percent:
+                tp = support + (current_price * tp_percent / 100 * 0.1)
+            else:
+                tp = support + (atr * 0.1)
             info(f"   TP скорректирован по поддержке: {atr_tp:.4f} → {tp:.4f} (support={support:.4f})")
         else:
             tp = atr_tp
 
         # Sanity check: TP must be below current price for SELL
         if tp >= current_price:
-            tp = current_price - (atr * tp_mult)
+            if use_percent:
+                tp = current_price * (1 - tp_percent / 100)
+            else:
+                tp = current_price - (atr * tp_mult)
             info(f"   TP sanity fallback (SELL): TP was >= price, reset to {tp:.4f}")
 
     else:

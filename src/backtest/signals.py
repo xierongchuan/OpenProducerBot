@@ -229,6 +229,19 @@ class SignalGenerator:
             else "нет",
         }
 
+        # Рассчитать SL/TP если есть сигнал на вход
+        if normalized["action"] in ("BUY", "SELL"):
+            sl_pct = self.config.get("preset", {}).get("sl_percent")
+            tp_pct = self.config.get("preset", {}).get("tp_percent")
+            if sl_pct and tp_pct:
+                current_price = klines[index]["closePrice"]
+                if normalized["action"] == "BUY":
+                    normalized["stop_loss"] = current_price * (1 - sl_pct / 100)
+                    normalized["take_profit"] = current_price * (1 + tp_pct / 100)
+                else:
+                    normalized["stop_loss"] = current_price * (1 + sl_pct / 100)
+                    normalized["take_profit"] = current_price * (1 - tp_pct / 100)
+
         # Если есть AI, добавить подтверждение
         if self.strategy.upper() in ["HYBRID", "HYBRID_VETO"] and normalized[
             "action"

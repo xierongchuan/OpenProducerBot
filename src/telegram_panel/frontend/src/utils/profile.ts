@@ -9,7 +9,7 @@
  * Форматирует техническое имя параметра в человекочитаемый формат
  * Примеры:
  * - position_check_interval -> Position Check Interval
- * - atr_sl_mult -> Atr Sl Mult
+ * - sl_percent -> Sl Percent
  * - minScoreForSignal -> Min Score For Signal
  * - min_score -> Min Score
  */

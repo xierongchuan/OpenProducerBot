@@ -219,8 +219,8 @@ export interface StrategyInfo {
     timeframe?: string;
     leverage?: number;
     loop_interval?: number;
-    atr_sl_mult?: number;
-    atr_tp_mult?: number;
+    sl_percent?: number;
+    tp_percent?: number;
     [key: string]: unknown;
   };
   has_ai: boolean;

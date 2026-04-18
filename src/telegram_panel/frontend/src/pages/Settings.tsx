@@ -408,8 +408,8 @@ function StrategyTab({
             <InfoRow label="Timeframe" value={currentStrategy.preset.timeframe || 'N/A'} />
             <InfoRow label="Leverage" value={`${currentStrategy.preset.leverage || 'N/A'}x`} />
             <InfoRow label="Loop Interval" value={`${currentStrategy.preset.loop_interval || 'N/A'}s`} />
-            <InfoRow label="ATR SL Mult" value={String(currentStrategy.preset.atr_sl_mult || 'N/A')} />
-            <InfoRow label="ATR TP Mult" value={String(currentStrategy.preset.atr_tp_mult || 'N/A')} />
+            <InfoRow label="SL %" value={String(currentStrategy.preset.sl_percent || 'N/A')} />
+            <InfoRow label="TP %" value={String(currentStrategy.preset.tp_percent || 'N/A')} />
           </div>
         </Section>
       )}

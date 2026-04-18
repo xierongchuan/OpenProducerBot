@@ -40,8 +40,8 @@ def _make_settings(**overrides):
             "loop_interval": 60,
             "position_check_interval": 15,
             "leverage": 6,
-            "atr_sl_mult": 1.5,
-            "atr_tp_mult": 3.0,
+            "sl_percent": 1.5,
+            "tp_percent": 3.0,
         },
         "exit_rules": {
             "macd_weakening": {

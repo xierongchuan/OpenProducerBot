@@ -57,6 +57,7 @@ class MacdxSignalGenerator(BaseSignalGenerator):
         atr = analysis.get("atr") or 0
         atr_ratio = analysis.get("atr_ratio") or 1.0
         adx = analysis.get("adx") or 25
+        chop = analysis.get("chop") or 50
 
         macd_cross_weight = self.rules.get("macd_cross_weight", 2)
         rsi_weight = self.rules.get("rsi_zone_weight", 2)
@@ -74,6 +75,12 @@ class MacdxSignalGenerator(BaseSignalGenerator):
         rsi_short_min = self.rules.get("rsi_short_min", 35)
         bb_width_threshold = self.rules.get("bb_width_threshold", 0.5)
         adx_threshold = self.rules.get("adx_threshold", 25)
+
+        chop_enabled = self.rules.get("chop_enabled", False)
+        chop_threshold = self.rules.get("chop_threshold", 40)
+        chop_period = self.rules.get("chop_period", 14)
+        chop_penalty = self.rules.get("chop_penalty", -2)
+        chop_block_signals = self.rules.get("chop_block_signals", False)
 
         enable_volume_filter = self.rules.get("enable_volume_filter", True)
         enable_strengthening = self.rules.get("enable_strengthening_trend_entry", False)
@@ -666,6 +673,29 @@ class MacdxSignalGenerator(BaseSignalGenerator):
             short_score = max(0, short_score_adjusted)
             debug(f"[MACDX] ADX penalty applied: {adx_penalty} (ADX={adx:.0f}, threshold={adx_threshold})")
 
+        # CHOP Penalty - штраф за вялый/боковой рынок
+        is_choppy = chop > chop_threshold
+        debug(f"[MACDX] CHOP: enabled={chop_enabled}, penalty={chop_penalty}, chop={chop:.2f}, threshold={chop_threshold}, is_choppy={is_choppy}")
+
+        if chop_enabled and chop_penalty != 0 and is_choppy:
+            long_score_adjusted = long_score + chop_penalty
+            short_score_adjusted = short_score + chop_penalty
+
+            if chop_penalty < 0:
+                if macd_cross_long and long_score > 0:
+                    long_reasons.append(f"CHOP={chop:.0f}>{chop_threshold} ({chop_penalty})\n")
+                if macd_cross_short and short_score > 0:
+                    short_reasons.append(f"CHOP={chop:.0f}>{chop_threshold} ({chop_penalty})\n")
+
+            long_score = max(0, long_score_adjusted)
+            short_score = max(0, short_score_adjusted)
+            debug(f"[MACDX] CHOP penalty applied: {chop_penalty} (CHOP={chop:.2f}, threshold={chop_threshold})")
+
+        # CHOP block signals - полная блокировка при высоком CHOP
+        if chop_enabled and chop_block_signals and is_choppy:
+            debug(f"[MACDX] BLOCKED: Choppy market (CHOP={chop:.2f}>{chop_threshold})")
+            return self._hold_result(max_score, [f"Choppy market - CHOP={chop:.0f}>{chop_threshold}"])
+
         min_confirmations = self.rules.get("min_confirmations", 3)
 
         # Log scoring details
@@ -788,6 +818,8 @@ class MacdxSignalGenerator(BaseSignalGenerator):
             "rsi": rsi,
             "bb_width": bb_width,
             "adx": adx,
+            "chop": round(chop, 2),
+            "is_choppy": is_choppy,
             "is_sideways": is_sideways,
             "bearish_divergence": bearish_div,
             "bullish_divergence": bullish_div,

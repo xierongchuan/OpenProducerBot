@@ -14,6 +14,7 @@ from src.core.indicators import (
     calculate_ema_series,
     calculate_rsi_series,
     calculate_seb,
+    calculate_chop,
 )
 
 
@@ -288,6 +289,14 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         from src.utils.logger import warning
         warning(f"⚠️ Regime detection failed: {e}")
         regime_data = None
+
+    # === Расчёт CHOP (Choppiness Index) ===
+    try:
+        chop_result = calculate_chop(prices, period=14)
+        chop = chop_result.get("chop", 50.0)
+    except Exception as e:
+        warning(f"⚠️ CHOP calculation failed: {e}")
+        chop = 50.0
 
     # Текущая цена
     last_close = prices[-1]["closePrice"]
@@ -834,7 +843,9 @@ def analyze_symbol(symbol, position=None, decision_context=""):
         "ema9": ema9,
         "ema21": ema21,
         "atr": atr,
+        "atr_ratio": atr_ratio,
         "volume_ratio": volume_ratio,
+        "chop": chop,
         "global_trend": global_trend,
         "local_trend": local_trend,
         "last_5_direction": last_5_direction,

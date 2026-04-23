@@ -9,6 +9,10 @@ from .trend import (
     calculate_adx,
     calculate_adx_series,
 )
+from .choppiness import (
+    calculate_chop,
+    calculate_chop_series,
+)
 from .momentum import (
     calculate_macd,
     calculate_rsi_series,
@@ -36,6 +40,9 @@ __all__ = [
     "calculate_seb_series",
     "calculate_adx",
     "calculate_adx_series",
+    # choppiness
+    "calculate_chop",
+    "calculate_chop_series",
     # momentum
     "calculate_macd",
     "calculate_rsi_series",

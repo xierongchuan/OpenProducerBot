@@ -10,7 +10,7 @@
     "position_check_interval": 15,
     "atr_sl_mult": 1.5,
     "atr_tp_mult": 3,
-    "leverage": 7
+    "leverage": 5
   },
 
   "signal_rules": {

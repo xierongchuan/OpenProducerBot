@@ -6,24 +6,12 @@
     "bingx": [
       "BTCUSDT",
       "BNBUSDT",
-      "ADAUSDT",
-      "XRPUSDT",
-      "SOLUSDT",
-      "DOGEUSDT",
-      "DOTUSDT",
-      "AVAXUSDT",
       "LTCUSDT"
     ]
   },
   "symbol_profiles": {
     "BTCUSDT": "default",
     "BNBUSDT": "default",
-    "ADAUSDT": "default",
-    "XRPUSDT": "default",
-    "SOLUSDT": "default",
-    "DOGEUSDT": "default",
-    "DOTUSDT": "default",
-    "AVAXUSDT": "default",
     "LTCUSDT": "default"
   },
   "disabled_symbols": []

@@ -277,8 +277,14 @@ def execute_prediction(prediction, all_positions=None):
     POSITION_LIMITS.get("max_positions", 5)
     sum(len(p) for p in positions.values())
 
+    # Normalize symbol key for positions dict (exchange clients may use denormalized keys like BTCUSDT)
+    try:
+        denorm_symbol = client.denormalize_symbol(symbol)
+    except Exception:
+        denorm_symbol = symbol.replace("-", "").replace("/", "")
+
     # Флаг, есть ли у нас позиция по этому символу
-    symbol_positions = positions.get(symbol, [])
+    symbol_positions = positions.get(denorm_symbol, [])
     has_position = len(symbol_positions) > 0
     current_pos = symbol_positions[0] if has_position else None
 
@@ -417,8 +423,10 @@ def main(predictions):
         symbol = pred["symbol"]
         current_price = pred["current_price"]
 
+        # Normalize symbol key for positions dict (exchange clients may use denormalized keys like BTCUSDT)
+        denorm = client.denormalize_symbol(symbol) if hasattr(client, "denormalize_symbol") else symbol.replace("-", "").replace("/", "")
         # Проверяем, есть ли уже открытая позиция по данному символу (максимум 1 на актив)
-        has_position = symbol in positions and len(positions[symbol]) > 0
+        has_position = denorm in positions and len(positions[denorm]) > 0
 
         # Проверяем общий лимит позиций — пропускаем только символы БЕЗ позиции
         if total_positions >= MAX_POSITIONS and not has_position:
@@ -428,7 +436,7 @@ def main(predictions):
         if has_position:
             # Если позиция есть, проверяем сигналы на выход
             if pred["action"] in ["close", "close_partial"] and pred["confidence"] >= confidence_threshold:
-                current_pos = positions[symbol][0] # Берем первую (обычно единственную)
+                current_pos = positions[denorm][0] # Берем первую (обычно единственную)
                 # Support both dict and Position dataclass
                 if hasattr(current_pos, 'position_id'):
                     deal_id = current_pos.position_id
@@ -464,7 +472,7 @@ def main(predictions):
                 ai_tp = pred.get("take_profit")
 
                 if ai_sl or ai_tp:
-                    current_pos = positions[symbol][0]
+                    current_pos = positions[denorm][0]
                     # Determine position side for set_sl_tp
                     # BingXClient needs positionSide (LONG/SHORT)
                     # Support both dict and Position dataclass

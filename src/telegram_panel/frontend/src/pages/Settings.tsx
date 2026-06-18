@@ -16,10 +16,14 @@ import {
   cloneProfile,
   getProfileUsage,
   updateProfile,
+  getActiveTrades,
   getRuntimeStatus,
   startRuntime,
   stopRuntime,
   restartRuntime,
+  restartSymbolRuntime,
+  startSymbolRuntime,
+  stopSymbolRuntime,
   type ConfigSystemInfo,
   type TradingConfig,
   type BaseConfig,
@@ -29,6 +33,7 @@ import {
   type StrategyInstance,
   type RuntimeStatus,
 } from '../api/client';
+import type { Trade } from '../api/types';
 import { ProfileCard } from '../components/ProfileCard';
 import { ProfileEditor } from '../components/ProfileEditor';
 import { Spinner } from '../components/Spinner';
@@ -65,17 +70,19 @@ export function Settings() {
 
   // Symbol profiles
   const [symbolProfiles, setSymbolProfiles] = useState<SymbolProfilesResponse | null>(null);
+  const [activeTrades, setActiveTrades] = useState<Trade[]>([]);
 
   const fetchAll = useCallback(async () => {
     try {
       setError(null);
-      const [sysInfo, trading, strats, profs, symProfs, base] = await Promise.all([
+      const [sysInfo, trading, strats, profs, symProfs, base, trades] = await Promise.all([
         getConfigSystemInfo(),
         getTradingConfig(),
         getStrategies(),
         getProfiles(),
         getSymbolProfiles(),
         getBaseConfig(),
+        getActiveTrades(),
       ]);
       setSystemInfo(sysInfo);
       setTradingConfig(trading);
@@ -83,6 +90,7 @@ export function Settings() {
       setProfiles(profs);
       setSymbolProfiles(symProfs);
       setBaseConfig(base);
+      setActiveTrades(Array.isArray(trades) ? trades : Object.values(trades || {}) as Trade[]);
     } catch (err) {
       console.error('Settings fetch error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load settings');
@@ -199,6 +207,7 @@ export function Settings() {
       {tab === 'runtime' && symbolProfiles && profiles && strategies && (
         <RuntimeTab
           symbolProfiles={symbolProfiles}
+          activeTrades={activeTrades}
           profiles={profiles}
           strategies={strategies}
           onRefresh={fetchAll}
@@ -780,6 +789,7 @@ function getRuntimeErrorMessage(err: unknown, fallback: string): string {
 
 function RuntimeTab({
   symbolProfiles,
+  activeTrades,
   profiles,
   strategies,
   onRefresh,
@@ -787,6 +797,7 @@ function RuntimeTab({
   onError,
 }: {
   symbolProfiles: SymbolProfilesResponse;
+  activeTrades: Trade[];
   profiles: ProfilesResponse;
   strategies: StrategiesResponse | null;
   onRefresh: () => void;
@@ -832,6 +843,18 @@ function RuntimeTab({
 
   const newCompatibleProfiles = getCompatibleProfiles(newStrategy);
 
+  const normalizeSymbol = useCallback((symbol: string) => symbol.replace(/[-/]/g, '').toUpperCase(), []);
+
+  const symbolHasPosition = useCallback((symbol: string): boolean => {
+    const target = normalizeSymbol(symbol);
+    return activeTrades.some((trade) => normalizeSymbol(trade.symbol) === target);
+  }, [activeTrades, normalizeSymbol]);
+
+  const confirmActivePositionAction = useCallback((symbol: string, action: string): boolean => {
+    if (!symbolHasPosition(symbol)) return true;
+    return confirm(`У ${symbol} есть активная позиция. Вы точно хотите ${action}?`);
+  }, [symbolHasPosition]);
+
   useEffect(() => {
     setNewProfile((current) => getFallbackProfile(newStrategy, current));
   }, [newStrategy, getFallbackProfile]);
@@ -872,12 +895,14 @@ function RuntimeTab({
   };
 
   const handleProfileChange = async (symbol: string, profile: string, instanceId?: string) => {
+    if (!confirmActivePositionAction(symbol, 'изменить профиль и перезапустить процесс этого символа')) return;
     setSavingSymbol(instanceId || symbol);
     try {
       if (instanceId) {
         await setSymbolProfile(symbol, profile, instanceId);
+        await restartSymbolRuntime(instanceId, symbol, 'profile_changed');
         onRefresh();
-        onSuccess(`${instanceId} profile set to ${profile}`);
+        onSuccess(`${instanceId} profile set to ${profile}; restart queued`);
       }
     } catch (err) {
       onError(getRuntimeErrorMessage(err, 'Failed to update profile'));
@@ -892,14 +917,15 @@ function RuntimeTab({
     const selectedProfile = getFallbackProfile(selectedStrategy, newProfile);
     setAdding(true);
     try {
-      await createStrategyInstance({
+      const result = await createStrategyInstance({
         symbol: newSymbol.trim().toUpperCase(),
         strategy: selectedStrategy,
         profile: selectedProfile,
         enabled: true,
       });
+      await startSymbolRuntime(result.instance.id, result.instance.symbol, 'instance_created');
       onRefresh();
-      onSuccess(`${newSymbol.trim().toUpperCase()} ${selectedStrategy} instance added`);
+      onSuccess(`${newSymbol.trim().toUpperCase()} ${selectedStrategy} instance added; start queued`);
       setNewSymbol('');
     } catch (err) {
       onError(getRuntimeErrorMessage(err, 'Failed to add strategy instance'));
@@ -918,9 +944,29 @@ function RuntimeTab({
   };
 
   const handleUpdateInstance = async (instance: StrategyInstance, data: Partial<StrategyInstance>) => {
+    const disabling = data.enabled === false && instance.enabled;
+    const enabling = data.enabled === true && !instance.enabled;
+    const configChanged = data.strategy !== undefined || data.profile !== undefined;
+
+    if ((disabling || configChanged) && !confirmActivePositionAction(
+      instance.symbol,
+      disabling
+        ? 'выключить торговлю и остановить процесс этого символа'
+        : 'изменить конфигурацию и перезапустить процесс этого символа'
+    )) {
+      return;
+    }
+
     setSavingSymbol(instance.id);
     try {
       await updateStrategyInstance(instance.id, data);
+      if (disabling) {
+        await stopSymbolRuntime(instance.id, instance.symbol, 'instance_disabled');
+      } else if (enabling) {
+        await startSymbolRuntime(instance.id, instance.symbol, 'instance_enabled');
+      } else if (configChanged) {
+        await restartSymbolRuntime(instance.id, instance.symbol, 'instance_config_changed');
+      }
       onRefresh();
       onSuccess(`${instance.id} updated`);
     } catch (err) {
@@ -932,13 +978,29 @@ function RuntimeTab({
 
   const handleDeleteInstance = async (instance: StrategyInstance) => {
     if (!confirm(`Remove ${instance.id}?`)) return;
+    if (!confirmActivePositionAction(instance.symbol, 'удалить instance и остановить процесс этого символа')) return;
     setSavingSymbol(instance.id);
     try {
+      await stopSymbolRuntime(instance.id, instance.symbol, 'instance_delete');
       await deleteStrategyInstance(instance.id);
       onRefresh();
       onSuccess(`${instance.id} removed`);
     } catch (err) {
       onError(getRuntimeErrorMessage(err, 'Failed to remove strategy instance'));
+    } finally {
+      setSavingSymbol(null);
+    }
+  };
+
+  const handleRestartInstance = async (instance: StrategyInstance) => {
+    if (!confirmActivePositionAction(instance.symbol, 'перезапустить процесс этого символа')) return;
+    setSavingSymbol(instance.id);
+    try {
+      await restartSymbolRuntime(instance.id, instance.symbol, 'manual_instance_restart');
+      onSuccess(`${instance.id} restart queued`);
+      window.setTimeout(onRefresh, 1200);
+    } catch (err) {
+      onError(getRuntimeErrorMessage(err, 'Failed to restart strategy instance'));
     } finally {
       setSavingSymbol(null);
     }
@@ -1085,7 +1147,7 @@ function RuntimeTab({
           <div className="flex flex-col gap-3">
             {instances.map((instance) => {
               const isSaving = savingSymbol === instance.id;
-              const isDisabled = !instance.enabled || symbolProfiles.disabled_symbols.includes(instance.symbol);
+              const isDisabled = !instance.enabled || symbolProfiles.disabled_symbols.some((symbol) => normalizeSymbol(symbol) === normalizeSymbol(instance.symbol));
               const compatibleProfiles = getCompatibleProfiles(instance.strategy);
               const selectedProfile = compatibleProfiles.includes(instance.profile || 'default')
                 ? (instance.profile || 'default')
@@ -1116,6 +1178,14 @@ function RuntimeTab({
                         } disabled:opacity-50`}
                       >
                         {instance.enabled ? 'enabled' : 'disabled'}
+                      </button>
+                      <button
+                        onClick={() => handleRestartInstance(instance)}
+                        disabled={isSaving || isDisabled}
+                        className="text-xs px-2 py-1 rounded-lg border border-sky-500/30 text-sky-400 bg-sky-500/10 disabled:opacity-50"
+                        title="Restart instance"
+                      >
+                        restart
                       </button>
                       <button
                         onClick={() => handleDeleteInstance(instance)}

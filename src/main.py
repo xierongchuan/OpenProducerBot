@@ -19,7 +19,7 @@ from src.core import monitor
 from src.core import plotter
 from src.exchanges.dto.models import PositionSide
 
-from src.utils.logger import info, error
+from src.utils.logger import info, warning, error
 from src.exchanges.exchange_factory import get_exchange_client
 from src.config import AI_API_KEY, AI_PROVIDER
 
@@ -120,17 +120,25 @@ def run_pipeline():
 def run_multiprocess_pipeline():
     """Запускает отдельный процесс для каждого символа (Multiprocessing)"""
     import multiprocessing
+    import os
+    import signal
     from src.config import CHART_SETTINGS
-    from src.config_loader import get_strategy_instances, resolve_strategy_instance_config
+    from src.config_loader import clear_config_cache, get_strategy_instances, resolve_strategy_instance_config
     from src.core.process_worker import run_strategy_instance_pipeline
     from src.core.chart_worker import run_chart_worker
+    from src.symbol_runtime_control import COMMAND_PATH, STATUS_PATH, atomic_write_json, read_json, utc_now
+    from src.runtime import normalize_symbol_key
 
     print("\n🚀 Запуск мультипроцессного пайплайна...")
     info("🚀 Запуск мультипроцессного пайплайна...")
 
-    instances = get_strategy_instances()
+    def load_instances():
+        clear_config_cache()
+        return get_strategy_instances()
+
+    instances = load_instances()
     if not instances:
-        raise RuntimeError("No enabled strategy instances configured")
+        warning("⚠️ Нет включённых strategy instances; runtime ждёт команду запуска символа")
 
     instance_configs = {
         instance.id: resolve_strategy_instance_config(instance)
@@ -172,11 +180,16 @@ def run_multiprocess_pipeline():
         print(f"   ⚠️ WebSocket провайдер недоступен: {e}")
         info(f"⚠️ WebSocket провайдер недоступен, используем REST: {e}")
 
-    processes = []
+    workers = {}
+    chart_process = None
+    last_symbol_command_id = None
+    existing_symbol_command = read_json(COMMAND_PATH)
+    if existing_symbol_command and existing_symbol_command.get("id"):
+        last_symbol_command_id = str(existing_symbol_command["id"])
 
-    # 1. Запускаем торговые процессы (по одному на strategy instance)
-    for instance in instances:
-        config = instance_configs[instance.id]
+    def start_worker(instance):
+        clear_config_cache()
+        config = resolve_strategy_instance_config(instance)
         p = multiprocessing.Process(
             target=run_strategy_instance_pipeline,
             args=(instance.to_dict(), config, ws_cache, ws_ready),
@@ -185,10 +198,152 @@ def run_multiprocess_pipeline():
         worker_type = instance.strategy
 
         p.daemon = True
-        processes.append(p)
         p.start()
+        workers[instance.id] = {
+            "process": p,
+            "instance": instance,
+            "started_at": utc_now(),
+            "last_exit_code": None,
+        }
         print(f"   🔄 Запущен {worker_type} процесс {instance.id} для {instance.symbol} (PID: {p.pid})")
         info(f"🔄 Запущен {worker_type} процесс {instance.id} для {instance.symbol} (PID: {p.pid})")
+        return p
+
+    def stop_worker(instance_id, reason="manual"):
+        worker = workers.get(instance_id)
+        if not worker:
+            info(f"ℹ️ Worker {instance_id} уже остановлен")
+            return
+
+        process = worker["process"]
+        instance = worker["instance"]
+        if not process.is_alive():
+            process.join(timeout=0)
+            worker["last_exit_code"] = process.exitcode
+            workers.pop(instance_id, None)
+            info(f"ℹ️ Worker {instance_id} уже завершён (exit={process.exitcode})")
+            return
+
+        info(f"⏹️ Останавливаю worker {instance_id} для {instance.symbol} через {reason} (PID: {process.pid})")
+        if process.pid:
+            try:
+                os.kill(process.pid, signal.SIGINT)
+            except ProcessLookupError:
+                pass
+            except Exception as exc:
+                warning(f"⚠️ Не удалось отправить SIGINT worker {instance_id}: {exc}")
+
+        process.join(timeout=10)
+        if process.is_alive():
+            warning(f"⚠️ Worker {instance_id} не остановился штатно, отправляю terminate")
+            process.terminate()
+            process.join(timeout=5)
+        if process.is_alive():
+            warning(f"⚠️ Worker {instance_id} всё ещё жив, отправляю kill")
+            process.kill()
+            process.join(timeout=3)
+
+        worker["last_exit_code"] = process.exitcode
+        workers.pop(instance_id, None)
+        info(f"✅ Worker {instance_id} остановлен через {reason} (exit={process.exitcode})")
+
+    def refresh_workers_state():
+        stopped = []
+        for instance_id, worker in list(workers.items()):
+            process = worker["process"]
+            if process.is_alive():
+                continue
+            process.join(timeout=0)
+            worker["last_exit_code"] = process.exitcode
+            stopped.append((instance_id, process.exitcode))
+            workers.pop(instance_id, None)
+        for instance_id, exit_code in stopped:
+            warning(f"⚠️ Worker {instance_id} завершился (exit={exit_code})")
+
+    def select_command_targets(command, active_instances):
+        instance_id = str(command.get("instance_id") or "").lower()
+        symbol = command.get("symbol")
+        if instance_id:
+            return [instance_id]
+        if symbol:
+            symbol_key = normalize_symbol_key(symbol)
+            target_ids = {
+                item.id for item in active_instances.values()
+                if normalize_symbol_key(item.symbol) == symbol_key
+            }
+            target_ids.update(
+                instance_id
+                for instance_id, worker in workers.items()
+                if normalize_symbol_key(worker["instance"].symbol) == symbol_key
+            )
+            return sorted(target_ids)
+        return []
+
+    def handle_symbol_runtime_command():
+        nonlocal last_symbol_command_id
+        command = read_json(COMMAND_PATH)
+        if not command:
+            return
+        command_id = str(command.get("id") or "")
+        if not command_id or command_id == last_symbol_command_id:
+            return
+
+        action = str(command.get("action") or "").lower()
+        requested_by = str(command.get("requested_by") or "panel")
+        active_instances = {instance.id: instance for instance in load_instances()}
+        target_ids = select_command_targets(command, active_instances)
+        last_symbol_command_id = command_id
+
+        if action not in {"start", "stop", "restart"}:
+            warning(f"⚠️ Неизвестная команда symbol runtime: {action}")
+            return
+        if not target_ids:
+            warning(f"⚠️ Команда {action} не нашла target: {command}")
+            return
+
+        info(f"🎛️ Symbol runtime command: {action} targets={target_ids} by={requested_by}")
+        if action in {"stop", "restart"}:
+            for target_id in target_ids:
+                stop_worker(target_id, reason=requested_by)
+        if action in {"start", "restart"}:
+            for target_id in target_ids:
+                instance = active_instances.get(target_id)
+                if not instance:
+                    warning(f"⚠️ Worker {target_id} не запущен: instance отсутствует или выключен в active.json")
+                    continue
+                if target_id in workers and workers[target_id]["process"].is_alive():
+                    info(f"ℹ️ Worker {target_id} уже запущен")
+                    continue
+                start_worker(instance)
+
+    def write_symbol_runtime_status():
+        payload = {
+            "control_enabled": True,
+            "runtime_pid": os.getpid(),
+            "workers": [
+                {
+                    "id": instance_id,
+                    "symbol": worker["instance"].symbol,
+                    "strategy": worker["instance"].strategy,
+                    "profile": worker["instance"].profile,
+                    "pid": worker["process"].pid,
+                    "alive": worker["process"].is_alive(),
+                    "started_at": worker.get("started_at"),
+                }
+                for instance_id, worker in sorted(workers.items())
+            ],
+            "last_command_id": last_symbol_command_id,
+            "updated_at": utc_now(),
+            "updated_at_ts": time.time(),
+        }
+        try:
+            atomic_write_json(STATUS_PATH, payload)
+        except Exception as exc:
+            warning(f"⚠️ Не удалось записать symbol runtime status: {exc}")
+
+    # 1. Запускаем торговые процессы (по одному на strategy instance)
+    for instance in instances:
+        start_worker(instance)
 
         # Staggered start: задержка между запуском процессов чтобы не перегрузить API
         if len(instances) > 5:
@@ -202,7 +357,7 @@ def run_multiprocess_pipeline():
         )
         # ВАЖНО: chart_p НЕ может быть демоном, так как он сам порождает процессы (ProcessPoolExecutor)
         chart_p.daemon = False
-        processes.append(chart_p)
+        chart_process = chart_p
         chart_p.start()
         print(f"   🎨 Запущен процесс генерации графиков (PID: {chart_p.pid})")
         info(f"🎨 Запущен процесс генерации графиков (PID: {chart_p.pid})")
@@ -216,6 +371,9 @@ def run_multiprocess_pipeline():
     # Держим главный процесс живым, пока не нажмут Ctrl+C
     try:
         while True:
+            refresh_workers_state()
+            handle_symbol_runtime_command()
+            write_symbol_runtime_status()
             time.sleep(1)
     except KeyboardInterrupt:
         print("\n🛑 Остановка главного процесса...")
@@ -230,17 +388,17 @@ def run_multiprocess_pipeline():
             pass
 
         # Graceful shutdown of ALL processes
-        for p in processes:
-            if p.is_alive():
-                p.terminate()
+        for instance_id in list(workers.keys()):
+            stop_worker(instance_id, reason="runtime_shutdown")
+        if chart_process and chart_process.is_alive():
+            chart_process.terminate()
 
         time.sleep(0.5)
 
         # Force kill if still alive
-        for p in processes:
-            if p.is_alive():
-                print(f"   💀 Force killing PID: {p.pid}")
-                p.kill()
+        if chart_process and chart_process.is_alive():
+            print(f"   💀 Force killing PID: {chart_process.pid}")
+            chart_process.kill()
 
 def main():
     """Главная функция"""

@@ -1,13 +1,13 @@
 {
   "_description": "Active runtime configuration - strategy and symbol profile mapping",
   "_version": "1.0.0",
-  "strategy": "MACDX",
+  "strategy": "SCALP",
   "strategy_instances": [
     {
       "id": "btcusdt_hybrid",
       "symbol": "BTCUSDT",
-      "strategy": "MACDX",
-      "profile": "default",
+      "strategy": "SCALP",
+      "profile": "scalp_no_ai",
       "enabled": true
     },
     {
@@ -33,7 +33,7 @@
     ]
   },
   "symbol_profiles": {
-    "BTCUSDT": "default",
+    "BTCUSDT": "scalp_no_ai",
     "BNBUSDT": "default",
     "LTCUSDT": "default"
   },

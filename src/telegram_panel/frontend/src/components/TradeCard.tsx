@@ -32,6 +32,7 @@ export function TradeCard({ trade, disabledSymbols = [], onUpdate }: {
 
   const handleStop = async () => {
     if (loading) return;
+    if (!confirm(`У ${trade.symbol} есть активная позиция. Вы точно хотите выключить торговлю по этому символу?`)) return;
     setLoading(true);
     try {
       await disableSymbol(trade.symbol);

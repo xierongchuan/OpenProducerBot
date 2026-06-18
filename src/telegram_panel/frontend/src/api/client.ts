@@ -517,6 +517,20 @@ export interface RuntimeCommandResponse {
   runtime_status: RuntimeStatus;
 }
 
+export interface SymbolRuntimeCommandResponse {
+  status: 'queued';
+  command: {
+    id: string;
+    action: 'start' | 'stop' | 'restart';
+    symbol?: string;
+    instance_id?: string;
+    requested_by: string;
+    requested_at: string;
+    requested_at_ts: number;
+    reason?: string;
+  };
+}
+
 export function getRuntimeStatus() {
   return fetchAPI<RuntimeStatus>('/api/runtime/status');
 }
@@ -537,4 +551,26 @@ export function restartRuntime() {
   return fetchAPI<RuntimeCommandResponse>('/api/runtime/restart', {
     method: 'POST',
   });
+}
+
+export function commandSymbolRuntime(
+  action: 'start' | 'stop' | 'restart',
+  data: { symbol?: string; instance_id?: string; reason?: string }
+) {
+  return fetchAPI<SymbolRuntimeCommandResponse>(`/api/runtime/symbol/${action}`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function restartSymbolRuntime(instanceId: string, symbol?: string, reason = 'manual_restart') {
+  return commandSymbolRuntime('restart', { instance_id: instanceId, symbol, reason });
+}
+
+export function startSymbolRuntime(instanceId: string, symbol?: string, reason = 'manual_start') {
+  return commandSymbolRuntime('start', { instance_id: instanceId, symbol, reason });
+}
+
+export function stopSymbolRuntime(instanceId: string, symbol?: string, reason = 'manual_stop') {
+  return commandSymbolRuntime('stop', { instance_id: instanceId, symbol, reason });
 }

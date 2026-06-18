@@ -11,8 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from src.symbol_runtime_control import write_symbol_command
 from ..config import DATA_DIR
 from ..services.auth import get_current_user
 
@@ -134,3 +135,40 @@ async def enqueue_runtime_command(action: str, user: dict = Depends(get_current_
         "command": command,
         "runtime_status": status,
     }
+
+
+@router.post("/symbol/{action}")
+async def enqueue_symbol_runtime_command(
+    action: str,
+    request: Request,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Положить команду для перезапуска/остановки worker конкретного символа или instance."""
+    action = action.lower()
+    if action not in ALLOWED_ACTIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown symbol runtime action: {action}")
+
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    symbol = data.get("symbol")
+    instance_id = data.get("instance_id")
+    if not symbol and not instance_id:
+        raise HTTPException(status_code=400, detail="symbol or instance_id is required")
+
+    try:
+        command = write_symbol_command(
+            action,
+            requested_by=_extract_user_label(user),
+            symbol=symbol,
+            instance_id=instance_id,
+            reason=data.get("reason") or "panel",
+        )
+    except (OSError, ValueError) as exc:
+        logger.error("Не удалось записать symbol runtime command: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to write symbol runtime command: {exc}")
+
+    logger.info("Symbol runtime command queued: %s by %s", action, command["requested_by"])
+    return {"status": "queued", "command": command}

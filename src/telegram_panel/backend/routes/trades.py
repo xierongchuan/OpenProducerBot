@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 
+from src.symbol_runtime_control import write_symbol_command
 from ..services.auth import get_current_user
 from ..services.data_reader import DataReader
 from ..config import DATA_DIR, CONFIG_PATH
@@ -21,6 +22,11 @@ _CONFIG_DIR = CONFIG_PATH.parent
 
 def _use_new_config() -> bool:
     return (_CONFIG_DIR / "active.json").exists()
+
+
+def _normalize_symbol_key(symbol: str) -> str:
+    """Нормализует символ для сравнения: BTC-USDT/BTCUSDT -> BTCUSDT."""
+    return str(symbol or "").replace("-", "").replace("/", "").upper()
 
 
 def _read_disabled_symbols() -> list:
@@ -52,6 +58,14 @@ def _write_disabled_symbols(disabled: list) -> bool:
     config = read_json(CONFIG_PATH) or {}
     config["DISABLED_SYMBOLS"] = disabled
     return write_json(CONFIG_PATH, config)
+
+
+def _queue_symbol_command(action: str, symbol: str, reason: str) -> None:
+    """Отправляет runtime-команду для worker символа; ошибка не откатывает config."""
+    try:
+        write_symbol_command(action, requested_by="panel", symbol=symbol, reason=reason)
+    except Exception as exc:
+        logger.warning("Не удалось отправить symbol runtime command %s для %s: %s", action, symbol, exc)
 
 
 @router.get("/active")
@@ -172,16 +186,18 @@ async def disable_symbol(
     _user: dict = Depends(get_current_user),
 ) -> dict:
     """Disable trading for a symbol."""
-    symbol = symbol.upper().replace(" ", "")
+    symbol = _normalize_symbol_key(symbol)
 
     disabled = _read_disabled_symbols()
+    disabled_keys = {_normalize_symbol_key(item) for item in disabled}
 
-    if symbol in disabled:
+    if symbol in disabled_keys:
         return {"status": "already_disabled", "symbol": symbol}
 
     disabled.append(symbol)
 
     if _write_disabled_symbols(disabled):
+        _queue_symbol_command("stop", symbol, "symbol_disabled")
         return {"status": "success", "symbol": symbol, "action": "disabled"}
     return {"status": "error", "message": "Failed to write config"}
 
@@ -192,16 +208,18 @@ async def enable_symbol(
     _user: dict = Depends(get_current_user),
 ) -> dict:
     """Enable trading for a symbol."""
-    symbol = symbol.upper().replace(" ", "")
+    symbol = _normalize_symbol_key(symbol)
 
     disabled = _read_disabled_symbols()
+    disabled_keys = {_normalize_symbol_key(item) for item in disabled}
 
-    if symbol not in disabled:
+    if symbol not in disabled_keys:
         return {"status": "already_enabled", "symbol": symbol}
 
-    disabled.remove(symbol)
+    disabled = [item for item in disabled if _normalize_symbol_key(item) != symbol]
 
     if _write_disabled_symbols(disabled):
+        _queue_symbol_command("start", symbol, "symbol_enabled")
         return {"status": "success", "symbol": symbol, "action": "enabled"}
     return {"status": "error", "message": "Failed to write config"}
 

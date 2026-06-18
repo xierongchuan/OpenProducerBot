@@ -1,0 +1,10 @@
+{
+  "_description": "SCALP No AI profile - same as default but without AI signals",
+  "_version": "1.0.0",
+  "_inherits": "default",
+  "_strategy": "SCALP",
+  "ai_integration": {
+    "regime_enabled": false,
+    "veto_enabled": false
+  }
+}

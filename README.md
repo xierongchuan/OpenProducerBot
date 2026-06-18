@@ -208,6 +208,18 @@ podman run --rm -v .:/app:Z -w /app python:3.12-slim \
   sh -c "pip install -q requests pandas matplotlib pytest && python -m pytest tests/ -x -q"
 ```
 
+`run.py` по умолчанию запускает runtime supervisor. Он остаётся живым внутри контейнера
+trading bot и управляет дочерним торговым runtime через команды `start`, `stop`,
+`restart` из Telegram Panel. Панель не запускает Podman и не убивает контейнеры:
+она пишет команду в `data/runtime_command.json`, а код trading bot выполняет её и
+публикует состояние в `data/runtime_status.json`.
+
+Для старого прямого запуска без supervisor:
+
+```bash
+SERVO_RUNTIME_SUPERVISOR=0 ./scripts/run_trading_bot.sh
+```
+
 ---
 
 ## <a id="configuration"></a>Конфигурация
@@ -320,7 +332,11 @@ Factory, Strategy, Singleton, Template Method, Observer, Adapter.
 - **Charts** — галерея PNG графиков
 - **Logs** — просмотр логов в реальном времени
 - **Journal** — журнал AI-решений
-- **Settings** — Runtime instances, Position & Risk, Profiles, AI Settings
+- **Settings** — Runtime control, Runtime instances, Position & Risk, Profiles, AI Settings
+
+В `Settings → Runtime` доступны кнопки `Старт`, `Стоп`, `Рестарт` для торгового
+runtime. `Стоп` останавливает торговые worker-процессы, но оставляет supervisor
+живым, чтобы следующий `Старт` можно было выполнить из панели без терминала.
 
 ### Настройка
 

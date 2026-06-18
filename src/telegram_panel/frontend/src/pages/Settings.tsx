@@ -16,6 +16,10 @@ import {
   cloneProfile,
   getProfileUsage,
   updateProfile,
+  getRuntimeStatus,
+  startRuntime,
+  stopRuntime,
+  restartRuntime,
   type ConfigSystemInfo,
   type TradingConfig,
   type BaseConfig,
@@ -23,6 +27,7 @@ import {
   type ProfilesResponse,
   type SymbolProfilesResponse,
   type StrategyInstance,
+  type RuntimeStatus,
 } from '../api/client';
 import { ProfileCard } from '../components/ProfileCard';
 import { ProfileEditor } from '../components/ProfileEditor';
@@ -30,6 +35,7 @@ import { Spinner } from '../components/Spinner';
 import { Button } from '../components/ui/Button';
 import { Card as Section } from '../components/ui/Card';
 import { ListInputRow as SettingRow, ListToggleRow as ToggleRow } from '../components/ui/List';
+import { StatusDot } from '../components/ui/StatusDot';
 import { Tabs } from '../components/ui/Tabs';
 
 type Tab = 'runtime' | 'trading' | 'profiles' | 'infrastructure';
@@ -732,6 +738,42 @@ function ProfilesTab({
 // Runtime Tab
 // ============================================================================
 
+type RuntimeAction = 'start' | 'stop' | 'restart';
+
+function runtimeStateLabel(state: string): string {
+  const labels: Record<string, string> = {
+    running: 'Работает',
+    stopped: 'Остановлен',
+    starting: 'Запускается',
+    stopping: 'Останавливается',
+    restarting: 'Перезапуск',
+    crashed: 'Ошибка',
+    unavailable: 'Нет связи',
+  };
+  return labels[state] || state;
+}
+
+function formatRuntimeTime(value: string | null | undefined): string {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function runtimeActionLabel(action: RuntimeAction): string {
+  const labels: Record<RuntimeAction, string> = {
+    start: 'Старт',
+    stop: 'Стоп',
+    restart: 'Рестарт',
+  };
+  return labels[action];
+}
+
 function RuntimeTab({
   symbolProfiles,
   availableProfiles,
@@ -752,7 +794,50 @@ function RuntimeTab({
   const [newStrategy, setNewStrategy] = useState(strategies?.available[0] || 'HYBRID');
   const [newProfile, setNewProfile] = useState('default');
   const [adding, setAdding] = useState(false);
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [runtimeAction, setRuntimeAction] = useState<RuntimeAction | null>(null);
   const instances = symbolProfiles.strategy_instances || [];
+  const runtimeState = runtimeStatus?.state || 'unavailable';
+  const runtimeBusy = runtimeAction !== null || ['starting', 'stopping', 'restarting'].includes(runtimeState);
+  const runtimeControlEnabled = !!runtimeStatus?.control_enabled && !runtimeStatus?.stale;
+  const runtimeRunning = ['running', 'starting', 'restarting'].includes(runtimeState);
+  const runtimeStopped = ['stopped', 'crashed'].includes(runtimeState);
+
+  const fetchRuntimeStatus = useCallback(async () => {
+    try {
+      const status = await getRuntimeStatus();
+      setRuntimeStatus(status);
+      setRuntimeError(null);
+    } catch (err) {
+      setRuntimeError(err instanceof Error ? err.message : 'Runtime status unavailable');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRuntimeStatus();
+    const timer = window.setInterval(fetchRuntimeStatus, 5000);
+    return () => window.clearInterval(timer);
+  }, [fetchRuntimeStatus]);
+
+  const requestRuntimeAction = async (action: RuntimeAction, handler: () => Promise<unknown>) => {
+    if (action === 'stop' && !confirm('Остановить торговый runtime?')) return;
+    if (action === 'restart' && !confirm('Перезапустить торговый runtime?')) return;
+
+    setRuntimeAction(action);
+    try {
+      await handler();
+      onSuccess(`Команда ${runtimeActionLabel(action).toLowerCase()} отправлена`);
+      await fetchRuntimeStatus();
+      window.setTimeout(fetchRuntimeStatus, 1200);
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'Runtime command failed';
+      onError(text);
+      setRuntimeError(text);
+    } finally {
+      setRuntimeAction(null);
+    }
+  };
 
   const handleProfileChange = async (symbol: string, profile: string, instanceId?: string) => {
     setSavingSymbol(instanceId || symbol);
@@ -819,6 +904,82 @@ function RuntimeTab({
 
   return (
     <div className="flex flex-col gap-4">
+      <Section title="Bot Runtime">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <StatusDot active={runtimeState === 'running'} size="lg" />
+            <div className="flex flex-col min-w-0">
+              <span className={`text-sm font-medium ${
+                runtimeState === 'crashed' ? 'text-red-400' :
+                runtimeState === 'unavailable' || runtimeStatus?.stale ? 'text-amber-400' :
+                'text-tg-text'
+              }`}>
+                {runtimeStateLabel(runtimeState)}
+              </span>
+              <span className="text-[10px] text-tg-hint">
+                Runtime PID: {runtimeStatus?.runtime_pid ?? '-'}
+              </span>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchRuntimeStatus}
+            disabled={runtimeAction !== null}
+          >
+            Обновить
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl bg-tg-bg p-3 border border-white/10">
+            <div className="text-[10px] uppercase text-tg-hint">Supervisor</div>
+            <div className="text-sm font-semibold text-tg-text">{runtimeStatus?.supervisor_pid ?? '-'}</div>
+          </div>
+          <div className="rounded-xl bg-tg-bg p-3 border border-white/10">
+            <div className="text-[10px] uppercase text-tg-hint">Started</div>
+            <div className="text-sm font-semibold text-tg-text">{formatRuntimeTime(runtimeStatus?.started_at)}</div>
+          </div>
+          <div className="rounded-xl bg-tg-bg p-3 border border-white/10">
+            <div className="text-[10px] uppercase text-tg-hint">Command</div>
+            <div className="text-sm font-semibold text-tg-text capitalize">{runtimeStatus?.last_command_action || '-'}</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => requestRuntimeAction('start', startRuntime)}
+            disabled={!runtimeControlEnabled || runtimeBusy || runtimeRunning}
+            isLoading={runtimeAction === 'start'}
+          >
+            Старт
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => requestRuntimeAction('stop', stopRuntime)}
+            disabled={!runtimeControlEnabled || runtimeBusy || runtimeStopped}
+            isLoading={runtimeAction === 'stop'}
+          >
+            Стоп
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => requestRuntimeAction('restart', restartRuntime)}
+            disabled={!runtimeControlEnabled || runtimeBusy || !runtimeRunning}
+            isLoading={runtimeAction === 'restart'}
+          >
+            Рестарт
+          </Button>
+        </div>
+
+        {(runtimeError || runtimeStatus?.last_error || runtimeStatus?.stale) && (
+          <div className="text-xs text-amber-400 px-3 py-2 rounded-lg bg-amber-500/10">
+            {runtimeError || runtimeStatus?.last_error || 'Supervisor status устарел'}
+          </div>
+        )}
+      </Section>
+
       <Section title="Runtime Overview">
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl bg-tg-bg p-3 border border-white/10">

@@ -48,6 +48,8 @@ class _Handler(FileSystemEventHandler):
 
         if name == "active_trades.json" or name == "trade_history.json":
             return "trade_update"
+        if name == "runtime_status.json":
+            return "runtime_status"
         if p.suffix.lower() == ".json" and p.parent.name == "prices":
             return "data_update"
         if p.suffix.lower() == ".png":

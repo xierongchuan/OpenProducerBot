@@ -479,3 +479,60 @@ export function closePosition(symbol: string) {
 export function getDisabledSymbols() {
   return fetchAPI<{ disabled_symbols: string[] }>('/api/trades/disabled');
 }
+
+// ============================================================================
+// Runtime Management API
+// ============================================================================
+
+export interface RuntimeStatus {
+  state: 'running' | 'stopped' | 'starting' | 'stopping' | 'restarting' | 'crashed' | 'unavailable' | string;
+  control_enabled: boolean;
+  supervisor_pid: number | null;
+  runtime_pid: number | null;
+  started_at: string | null;
+  stopped_at: string | null;
+  last_exit_code: number | null;
+  last_error: string | null;
+  last_command_id: string | null;
+  last_command_action: string | null;
+  last_command_at: string | null;
+  updated_at: string | null;
+  updated_at_ts: number | null;
+  stale: boolean;
+  command_path: string;
+  status_path: string;
+}
+
+export interface RuntimeCommandResponse {
+  status: 'queued';
+  command: {
+    id: string;
+    action: 'start' | 'stop' | 'restart';
+    requested_by: string;
+    requested_at: string;
+    requested_at_ts: number;
+  };
+  runtime_status: RuntimeStatus;
+}
+
+export function getRuntimeStatus() {
+  return fetchAPI<RuntimeStatus>('/api/runtime/status');
+}
+
+export function startRuntime() {
+  return fetchAPI<RuntimeCommandResponse>('/api/runtime/start', {
+    method: 'POST',
+  });
+}
+
+export function stopRuntime() {
+  return fetchAPI<RuntimeCommandResponse>('/api/runtime/stop', {
+    method: 'POST',
+  });
+}
+
+export function restartRuntime() {
+  return fetchAPI<RuntimeCommandResponse>('/api/runtime/restart', {
+    method: 'POST',
+  });
+}

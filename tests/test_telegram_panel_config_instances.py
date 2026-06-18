@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from src.telegram_panel.backend.routes import config_routes
@@ -41,6 +43,63 @@ def test_panel_strategy_instance_requires_existing_profile(tmp_path, monkeypatch
 
     assert exc.value.status_code == 400
     assert "Profile not found" in exc.value.detail
+
+
+def test_panel_strategy_instance_rejects_incompatible_profile(tmp_path, monkeypatch):
+    profiles_dir = tmp_path / "profiles"
+    profiles_dir.mkdir()
+    (profiles_dir / "btc_aggressive.json").write_text(
+        '{"_strategy": "SCALP"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_routes, "PROFILES_DIR", profiles_dir)
+
+    with pytest.raises(config_routes.HTTPException) as exc:
+        config_routes._validate_strategy_instance({
+            "symbol": "BTCUSDT",
+            "strategy": "MACDX",
+            "profile": "btc_aggressive",
+        })
+
+    assert exc.value.status_code == 400
+    assert "belongs to strategy 'SCALP'" in exc.value.detail
+
+
+def test_panel_strategy_instances_sync_updates_legacy_profile(tmp_path, monkeypatch):
+    profiles_dir = tmp_path / "profiles"
+    profiles_dir.mkdir()
+    (profiles_dir / "default.json").write_text("{}", encoding="utf-8")
+    (profiles_dir / "macdx_safe.json").write_text('{"_strategy": "MACDX"}', encoding="utf-8")
+    monkeypatch.setattr(config_routes, "PROFILES_DIR", profiles_dir)
+
+    active = {
+        "strategy_instances": [
+            {"id": "btc_macdx", "symbol": "BTCUSDT", "strategy": "MACDX", "profile": "macdx_safe"},
+        ],
+        "symbol_profiles": {"BTCUSDT": "default"},
+    }
+
+    synced = config_routes._sync_active_legacy_fields(active)
+
+    assert synced["symbol_profiles"]["BTCUSDT"] == "macdx_safe"
+
+
+def test_panel_profiles_response_groups_compatible_profiles(tmp_path, monkeypatch):
+    profiles_dir = tmp_path / "profiles"
+    profiles_dir.mkdir()
+    (profiles_dir / "default.json").write_text('{"_strategy": null}', encoding="utf-8")
+    (profiles_dir / "eth_conservative.json").write_text('{"_strategy": "MACDX"}', encoding="utf-8")
+    (profiles_dir / "btc_aggressive.json").write_text('{"_strategy": "SCALP"}', encoding="utf-8")
+    monkeypatch.setattr(config_routes, "PROFILES_DIR", profiles_dir)
+    monkeypatch.setattr(config_routes, "_use_new_config_system", lambda: True)
+
+    response = asyncio.run(config_routes.list_profiles())
+
+    assert response["profile_strategies"]["eth_conservative"] == "MACDX"
+    assert "eth_conservative" in response["compatible_by_strategy"]["MACDX"]
+    assert "eth_conservative" not in response["compatible_by_strategy"]["GRID"]
+    assert "eth_conservative" not in response["compatible_by_strategy"]["AISCALP"]
+    assert response["compatible_by_strategy"]["GRID"] == ["default"]
 
 
 def test_panel_strategy_instances_legacy_fallback(tmp_path, monkeypatch):

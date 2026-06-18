@@ -199,7 +199,7 @@ export function Settings() {
       {tab === 'runtime' && symbolProfiles && profiles && strategies && (
         <RuntimeTab
           symbolProfiles={symbolProfiles}
-          availableProfiles={profiles.available}
+          profiles={profiles}
           strategies={strategies}
           onRefresh={fetchAll}
           onSuccess={(text) => {
@@ -774,16 +774,20 @@ function runtimeActionLabel(action: RuntimeAction): string {
   return labels[action];
 }
 
+function getRuntimeErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 function RuntimeTab({
   symbolProfiles,
-  availableProfiles,
+  profiles,
   strategies,
   onRefresh,
   onSuccess,
   onError,
 }: {
   symbolProfiles: SymbolProfilesResponse;
-  availableProfiles: string[];
+  profiles: ProfilesResponse;
   strategies: StrategiesResponse | null;
   onRefresh: () => void;
   onSuccess: (text: string) => void;
@@ -803,6 +807,34 @@ function RuntimeTab({
   const runtimeControlEnabled = !!runtimeStatus?.control_enabled && !runtimeStatus?.stale;
   const runtimeRunning = ['running', 'starting', 'restarting'].includes(runtimeState);
   const runtimeStopped = ['stopped', 'crashed'].includes(runtimeState);
+
+  const getCompatibleProfiles = useCallback((strategy: string): string[] => {
+    const strategyUpper = strategy.toUpperCase();
+    const serverCompatible = profiles.compatible_by_strategy?.[strategyUpper];
+    if (serverCompatible?.length) {
+      return serverCompatible;
+    }
+
+    const compatible = profiles.available.filter((profileName) => {
+      const profileStrategy = profiles.profile_strategies?.[profileName]
+        ?? (profiles.profiles[profileName] as Record<string, unknown> | undefined)?._strategy;
+      return !profileStrategy || String(profileStrategy).toUpperCase() === strategyUpper;
+    });
+    return compatible.length > 0 ? compatible : ['default'];
+  }, [profiles]);
+
+  const getFallbackProfile = useCallback((strategy: string, currentProfile: string): string => {
+    const compatible = getCompatibleProfiles(strategy);
+    if (compatible.includes(currentProfile)) return currentProfile;
+    if (compatible.includes('default')) return 'default';
+    return compatible[0];
+  }, [getCompatibleProfiles]);
+
+  const newCompatibleProfiles = getCompatibleProfiles(newStrategy);
+
+  useEffect(() => {
+    setNewProfile((current) => getFallbackProfile(newStrategy, current));
+  }, [newStrategy, getFallbackProfile]);
 
   const fetchRuntimeStatus = useCallback(async () => {
     try {
@@ -847,8 +879,8 @@ function RuntimeTab({
         onRefresh();
         onSuccess(`${instanceId} profile set to ${profile}`);
       }
-    } catch {
-      onError('Failed to update profile');
+    } catch (err) {
+      onError(getRuntimeErrorMessage(err, 'Failed to update profile'));
     } finally {
       setSavingSymbol(null);
     }
@@ -857,22 +889,32 @@ function RuntimeTab({
   const handleAddInstance = async () => {
     if (!newSymbol.trim()) return;
     const selectedStrategy = newStrategy || strategies?.available[0] || 'HYBRID';
+    const selectedProfile = getFallbackProfile(selectedStrategy, newProfile);
     setAdding(true);
     try {
       await createStrategyInstance({
         symbol: newSymbol.trim().toUpperCase(),
         strategy: selectedStrategy,
-        profile: newProfile,
+        profile: selectedProfile,
         enabled: true,
       });
       onRefresh();
       onSuccess(`${newSymbol.trim().toUpperCase()} ${selectedStrategy} instance added`);
       setNewSymbol('');
-    } catch {
-      onError('Failed to add strategy instance');
+    } catch (err) {
+      onError(getRuntimeErrorMessage(err, 'Failed to add strategy instance'));
     } finally {
       setAdding(false);
     }
+  };
+
+  const handleStrategyChange = async (instance: StrategyInstance, strategy: string) => {
+    const nextProfile = getFallbackProfile(strategy, instance.profile || 'default');
+    const data: Partial<StrategyInstance> = { strategy };
+    if (nextProfile !== instance.profile) {
+      data.profile = nextProfile;
+    }
+    await handleUpdateInstance(instance, data);
   };
 
   const handleUpdateInstance = async (instance: StrategyInstance, data: Partial<StrategyInstance>) => {
@@ -881,8 +923,8 @@ function RuntimeTab({
       await updateStrategyInstance(instance.id, data);
       onRefresh();
       onSuccess(`${instance.id} updated`);
-    } catch {
-      onError('Failed to update strategy instance');
+    } catch (err) {
+      onError(getRuntimeErrorMessage(err, 'Failed to update strategy instance'));
     } finally {
       setSavingSymbol(null);
     }
@@ -895,8 +937,8 @@ function RuntimeTab({
       await deleteStrategyInstance(instance.id);
       onRefresh();
       onSuccess(`${instance.id} removed`);
-    } catch {
-      onError('Failed to remove strategy instance');
+    } catch (err) {
+      onError(getRuntimeErrorMessage(err, 'Failed to remove strategy instance'));
     } finally {
       setSavingSymbol(null);
     }
@@ -1008,7 +1050,11 @@ function RuntimeTab({
           />
           <select
             value={newStrategy}
-            onChange={(e) => setNewStrategy(e.target.value)}
+            onChange={(e) => {
+              const strategy = e.target.value;
+              setNewStrategy(strategy);
+              setNewProfile((current) => getFallbackProfile(strategy, current));
+            }}
             className="tg-control text-sm rounded-xl px-3 py-3"
           >
             {(strategies?.available || ['HYBRID']).map((strategy) => (
@@ -1020,7 +1066,7 @@ function RuntimeTab({
             onChange={(e) => setNewProfile(e.target.value)}
             className="tg-control text-sm rounded-xl px-3 py-3"
           >
-            {availableProfiles.map((profile) => (
+            {newCompatibleProfiles.map((profile) => (
               <option key={profile} value={profile}>{profile}</option>
             ))}
           </select>
@@ -1040,6 +1086,10 @@ function RuntimeTab({
             {instances.map((instance) => {
               const isSaving = savingSymbol === instance.id;
               const isDisabled = !instance.enabled || symbolProfiles.disabled_symbols.includes(instance.symbol);
+              const compatibleProfiles = getCompatibleProfiles(instance.strategy);
+              const selectedProfile = compatibleProfiles.includes(instance.profile || 'default')
+                ? (instance.profile || 'default')
+                : getFallbackProfile(instance.strategy, instance.profile || 'default');
 
               return (
                 <div
@@ -1081,7 +1131,7 @@ function RuntimeTab({
                   <div className="grid grid-cols-2 gap-2">
                     <select
                       value={instance.strategy}
-                      onChange={(e) => handleUpdateInstance(instance, { strategy: e.target.value })}
+                      onChange={(e) => handleStrategyChange(instance, e.target.value)}
                       disabled={isSaving}
                       className="tg-control text-xs rounded-lg px-2 py-1.5"
                     >
@@ -1091,12 +1141,12 @@ function RuntimeTab({
                     </select>
 
                     <select
-                      value={instance.profile || 'default'}
+                      value={selectedProfile}
                       onChange={(e) => handleProfileChange(instance.symbol, e.target.value, instance.id)}
                       disabled={isSaving}
                       className="tg-control text-xs rounded-lg px-2 py-1.5"
                     >
-                      {availableProfiles.map((profile) => (
+                      {compatibleProfiles.map((profile) => (
                         <option key={profile} value={profile}>{profile}</option>
                       ))}
                     </select>

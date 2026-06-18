@@ -112,6 +112,18 @@ async def request_logging_middleware(request: Request, call_next):
         raise
 
 
+@app.middleware("http")
+async def frontend_cache_control_middleware(request: Request, call_next):
+    """Не даёт Telegram WebView держать старую сборку панели после rebuild."""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 # API routes
 app.include_router(dashboard.router)
 app.include_router(trades.router)
@@ -166,7 +178,11 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-# Mount static frontend build (must be last so API routes take priority)
-frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+# Mount static frontend build (must be last so API routes take priority).
+# В контейнере frontend собирается в /app/frontend/dist, а /app/src может быть
+# примонтирован для backend-кода. Поэтому сначала берём build из image.
+frontend_dist = Path("/app/frontend/dist")
+if not frontend_dist.is_dir():
+    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if frontend_dist.is_dir():
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")

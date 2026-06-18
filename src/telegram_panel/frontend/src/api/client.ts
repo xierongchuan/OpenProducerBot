@@ -240,6 +240,8 @@ export interface ProfileInfo {
 export interface ProfilesResponse {
   profiles: Record<string, ProfileInfo>;
   available: string[];
+  profile_strategies?: Record<string, string | null>;
+  compatible_by_strategy?: Record<string, string[]>;
 }
 
 export interface StrategyInstance {

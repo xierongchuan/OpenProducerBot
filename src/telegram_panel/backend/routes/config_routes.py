@@ -113,6 +113,54 @@ def _profile_exists(profile: str) -> bool:
     return profile == "default" or (PROFILES_DIR / f"{profile}.json").exists()
 
 
+def _load_profile_with_inheritance(profile: str, seen: set[str] | None = None) -> dict:
+    """Загружает профиль с учетом наследования для проверки совместимости."""
+    if profile == "default" or not profile:
+        return {}
+
+    seen = seen or set()
+    if profile in seen:
+        raise HTTPException(status_code=400, detail=f"Circular profile inheritance: {profile}")
+    seen.add(profile)
+
+    path = PROFILES_DIR / f"{profile}.json"
+    if not path.exists():
+        raise HTTPException(status_code=400, detail=f"Profile not found: {profile}")
+
+    config = _load_json(path)
+    parent_name = config.get("_inherits")
+    if parent_name and parent_name != "default":
+        parent = _load_profile_with_inheritance(str(parent_name), seen)
+        return {**parent, **config}
+    return config
+
+
+def _validate_profile_strategy_compatibility(profile: str, strategy: str) -> None:
+    """Профиль с _strategy можно назначать только на свою стратегию."""
+    if profile == "default" or not profile:
+        return
+
+    profile_config = _load_profile_with_inheritance(profile)
+    profile_strategy = profile_config.get("_strategy")
+    if profile_strategy and str(profile_strategy).upper() != str(strategy).upper():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Profile '{profile}' belongs to strategy '{profile_strategy}', "
+                f"but instance is using strategy '{strategy}'"
+            ),
+        )
+
+
+def _get_profile_strategy(profile: str, profile_config: dict | None = None) -> str | None:
+    """Возвращает стратегию профиля, если профиль привязан к конкретной стратегии."""
+    if profile == "default" or not profile:
+        return None
+    config = profile_config if profile_config is not None else _load_profile_with_inheritance(profile)
+    profile_strategy = config.get("_strategy")
+    return str(profile_strategy).upper() if profile_strategy else None
+
+
 def _validate_strategy_instance(raw: dict) -> dict:
     """Validate and normalize one strategy instance from active.json/UI."""
     if not isinstance(raw, dict):
@@ -132,6 +180,7 @@ def _validate_strategy_instance(raw: dict) -> dict:
         raise HTTPException(status_code=400, detail=f"Invalid strategy instance id: {instance_id}")
     if not _profile_exists(profile):
         raise HTTPException(status_code=400, detail=f"Profile not found: {profile}")
+    _validate_profile_strategy_compatibility(profile, strategy)
 
     return {
         "id": instance_id,
@@ -184,8 +233,12 @@ def _sync_active_legacy_fields(active: dict, exchange: str = "bingx") -> dict:
     active["strategy"] = visible_instances[0]["strategy"]
 
     symbol_profiles = dict(active.get("symbol_profiles", {}))
+    synced_symbols = set()
     for item in visible_instances:
-        symbol_profiles.setdefault(item["symbol"], item.get("profile", "default"))
+        if item["symbol"] in synced_symbols:
+            continue
+        symbol_profiles[item["symbol"]] = item.get("profile", "default")
+        synced_symbols.add(item["symbol"])
     active["symbol_profiles"] = symbol_profiles
     active.setdefault("disabled_symbols", [])
     return active
@@ -1112,14 +1165,30 @@ async def get_profile_schema(_user: dict = Depends(get_current_user)) -> dict:
 async def list_profiles(_user: dict = Depends(get_current_user)) -> dict:
     """List all available profiles."""
     profiles = {}
+    profile_strategies = {}
 
     if _use_new_config_system() and PROFILES_DIR.exists():
         for path in PROFILES_DIR.glob("*.json"):
             name = path.stem
             config = _load_json(path)
             profiles[name] = config  # Return full JSON
+            profile_strategies[name] = _get_profile_strategy(name, config)
 
-    return {"profiles": profiles, "available": list(profiles.keys())}
+    available = list(profiles.keys())
+    compatible_by_strategy = {
+        strategy: [
+            name for name in available
+            if profile_strategies.get(name) in (None, strategy)
+        ]
+        for strategy in AVAILABLE_STRATEGIES
+    }
+
+    return {
+        "profiles": profiles,
+        "available": available,
+        "profile_strategies": profile_strategies,
+        "compatible_by_strategy": compatible_by_strategy,
+    }
 
 
 @router.get("/profiles/{name}")
@@ -1502,6 +1571,7 @@ async def set_symbol_profile(symbol: str, request: Request, _user: dict = Depend
         updated = False
         for instance in instances:
             if instance["id"] == target_id:
+                _validate_profile_strategy_compatibility(profile, instance["strategy"])
                 instance["profile"] = profile
                 updated = True
                 break
@@ -1513,6 +1583,7 @@ async def set_symbol_profile(symbol: str, request: Request, _user: dict = Depend
         symbol_key = _normalize_symbol_key(symbol)
         for instance in instances:
             if _normalize_symbol_key(instance["symbol"]) == symbol_key:
+                _validate_profile_strategy_compatibility(profile, instance["strategy"])
                 instance["profile"] = profile
         if instances:
             active["strategy_instances"] = instances

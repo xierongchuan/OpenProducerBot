@@ -1227,7 +1227,7 @@ class TestGetKlineDataWithWsCache:
 
         # WS provider вызывает ImportError — fallback на REST
         with patch("requests.get", return_value=mock_resp), \
-             patch.dict("sys.modules", {"src.exchanges.ws_data_provider": None}):
+             patch.dict("sys.modules", {"src.exchanges.bingx_ws_data_provider": None}):
             result = bingx_client.get_kline_data("BTC/USD", "5m", 3)
 
         assert len(result) == 3
@@ -1245,7 +1245,7 @@ class TestGetKlineDataWithWsCache:
         mock_ws.is_cache_ready = MagicMock(return_value=True)
         mock_ws.get_klines_from_shared_cache = MagicMock(return_value=ws_cached_data)
 
-        with patch.dict("sys.modules", {"src.exchanges.ws_data_provider": mock_ws}):
+        with patch.dict("sys.modules", {"src.exchanges.bingx_ws_data_provider": mock_ws}):
             result = bingx_client.get_kline_data("BTC/USD", "5m", 2)
 
         # 80% от limit=2 = 1.6, у нас 2 записи >= 1.6 — используем кэш

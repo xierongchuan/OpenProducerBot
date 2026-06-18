@@ -8,6 +8,7 @@ import time
 import hmac
 import hashlib
 import json
+import os
 import requests
 from urllib.parse import urlencode
 from src.config import BINGX_API_KEY, BINGX_SECRET_KEY, BINGX_API_URL
@@ -42,6 +43,7 @@ class BingXClient(ExchangeClient):
         self.api_key = api_key or BINGX_API_KEY
         self.secret_key = secret_key or BINGX_SECRET_KEY
         self.base_url = BINGX_API_URL
+        self.market_base_url = os.getenv("BINGX_MARKET_API_URL", "https://open-api.bingx.com")
 
         if not self.api_key or not self.secret_key:
             warning("⚠️ BingX API keys not configured! Private endpoints will fail.")
@@ -243,10 +245,10 @@ class BingXClient(ExchangeClient):
         # 1. Try WebSocket shared cache first
         ws_cache_result = None
         try:
-            from src.exchanges.ws_data_provider import is_cache_ready, get_klines_from_shared_cache
+            from src.exchanges.bingx_ws_data_provider import is_cache_ready, get_klines_from_shared_cache
 
             # Debug: check if cache is accessible
-            from src.exchanges.ws_data_provider import _shared_cache, _shared_ready
+            from src.exchanges.bingx_ws_data_provider import _shared_cache, _shared_ready
             debug_msg = f"[KLINE] _shared_cache={type(_shared_cache)}, _shared_ready={type(_shared_ready)}"
             print(debug_msg)  # Force stdout
 
@@ -281,7 +283,7 @@ class BingXClient(ExchangeClient):
         else:
             formatted_symbol = symbol.replace("/", "-")
 
-        market_url = f"{self.base_url}/openApi/swap/v3/quote/klines"
+        market_url = f"{self.market_base_url}/openApi/swap/v3/quote/klines"
 
         # Map verbose interval constants to BingX format
         interval_map = {
@@ -750,7 +752,7 @@ class BingXClient(ExchangeClient):
         formatted_symbol = self._format_symbol(symbol)
 
         # Публичный endpoint
-        market_url = f"{self.base_url}/openApi/swap/v2/quote/depth"
+        market_url = f"{self.market_base_url}/openApi/swap/v2/quote/depth"
 
         params = {
             "symbol": formatted_symbol,
@@ -803,7 +805,7 @@ class BingXClient(ExchangeClient):
         formatted_symbol = self._format_symbol(symbol)
 
         # Публичный endpoint
-        market_url = f"{self.base_url}/openApi/swap/v2/quote/ticker"
+        market_url = f"{self.market_base_url}/openApi/swap/v2/quote/ticker"
 
         params = {"symbol": formatted_symbol}
 
@@ -917,7 +919,7 @@ class BingXClient(ExchangeClient):
 
         try:
             formatted_symbol = self._format_symbol(symbol)
-            market_url = f"{self.base_url}/openApi/swap/v2/quote/premiumIndex"
+            market_url = f"{self.market_base_url}/openApi/swap/v2/quote/premiumIndex"
             params = {"symbol": formatted_symbol}
 
             max_retries = 3

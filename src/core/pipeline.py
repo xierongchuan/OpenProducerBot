@@ -73,7 +73,7 @@ class PipelineOrchestrator:
             # Setup shared WebSocket cache
             if ws_cache is not None and ws_ready is not None:
                 try:
-                    from src.exchanges.ws_data_provider import set_shared_cache
+                    from src.exchanges.bingx_ws_data_provider import set_shared_cache
                     set_shared_cache(ws_cache, ws_ready)
                 except Exception as e:
                     warning(f"⚠️ Failed to set shared cache: {e}")
@@ -161,7 +161,15 @@ class PipelineOrchestrator:
 
                     # 1. Collect data
                     with StageTimer("Сбор данных", symbol, "📊"):
-                        process_symbol(symbol)
+                        data_ready = process_symbol(symbol, self.config)
+
+                    if not data_ready:
+                        elapsed = time.time() - start_time
+                        warning(f"⚠️ [{symbol}] Цикл пропущен: рыночные данные недоступны ({elapsed:.2f}s)")
+                        self._sleep_cycle(symbol, preset, None, cycle_count)
+                        cycle_count += 1
+                        self._cycle_count += 1
+                        continue
 
                     # 2. Run pipeline
                     prediction = self.run_cycle(symbol, ws_cache, ws_ready)

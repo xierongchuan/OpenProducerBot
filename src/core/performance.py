@@ -32,6 +32,8 @@ class PerformanceTracker:
         try:
             with open(self.history_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+                if data == {}:
+                    return []
                 if not isinstance(data, list):
                     warning(f"[PerformanceTracker] Invalid history format: expected list, got {type(data)}")
                     return []

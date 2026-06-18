@@ -81,6 +81,8 @@ class RuntimeSupervisor:
         self._shutdown_requested = False
 
     def request_shutdown(self, signum: int | None = None) -> None:
+        if self._shutdown_requested:
+            return
         signal_name = signal.Signals(signum).name if signum else "manual"
         info(f"🛑 Supervisor получил сигнал остановки: {signal_name}")
         self._shutdown_requested = True

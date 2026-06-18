@@ -144,7 +144,7 @@ def run_multiprocess_pipeline():
     ws_cache = None
     ws_ready = None
     try:
-        from src.exchanges.ws_data_provider import start_ws_provider
+        from src.exchanges.bingx_ws_data_provider import start_ws_provider
 
         intervals = set()
         for config in instance_configs.values():
@@ -223,7 +223,7 @@ def run_multiprocess_pipeline():
     finally:
         # Stop WebSocket provider
         try:
-            from src.exchanges.ws_data_provider import stop_ws_provider
+            from src.exchanges.bingx_ws_data_provider import stop_ws_provider
             stop_ws_provider()
             info("📡 WebSocket провайдер остановлен")
         except Exception:

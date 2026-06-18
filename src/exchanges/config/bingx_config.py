@@ -46,21 +46,43 @@ class BingXConfig(ExchangeConfig):
 
     @property
     def supported_intervals(self) -> Dict[str, str]:
-        """Маппинг интервалов BingX"""
+        """REST kline interval mapping for BingX Swap API.
+
+        The current swap v3 klines endpoint accepts compact intervals such as
+        5m, 15m, and 1h. WebSocket stream names use a different long format
+        and are mapped separately in bingx_ws_data_provider.
+        """
         return {
-            "1m": "1min",
-            "3m": "3min",
-            "5m": "5min",
-            "15m": "15min",
-            "30m": "30min",
-            "1h": "1hour",
-            "2h": "2hour",
-            "4h": "4hour",
-            "6h": "6hour",
-            "12h": "12hour",
-            "1d": "1day",
-            "1w": "1week",
-            "1M": "1month",
+            "1m": "1m",
+            "3m": "3m",
+            "5m": "5m",
+            "15m": "15m",
+            "30m": "30m",
+            "1h": "1h",
+            "2h": "2h",
+            "4h": "4h",
+            "6h": "6h",
+            "8h": "8h",
+            "12h": "12h",
+            "1d": "1d",
+            "3d": "3d",
+            "1w": "1w",
+            "1M": "1M",
+            "MINUTE_1": "1m",
+            "MINUTE_3": "3m",
+            "MINUTE_5": "5m",
+            "MINUTE_15": "15m",
+            "MINUTE_30": "30m",
+            "HOUR_1": "1h",
+            "HOUR_2": "2h",
+            "HOUR_4": "4h",
+            "HOUR_6": "6h",
+            "HOUR_8": "8h",
+            "HOUR_12": "12h",
+            "DAY_1": "1d",
+            "DAY_3": "3d",
+            "WEEK_1": "1w",
+            "MONTH_1": "1M",
         }
 
     @property
@@ -99,5 +121,3 @@ class BingXConfig(ExchangeConfig):
             "intervals": list(self.supported_intervals.keys()),
         })
         return base
-
-

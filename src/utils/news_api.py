@@ -16,7 +16,6 @@ try:
     NEWSPAPER3K_AVAILABLE = True
 except ImportError:
     NEWSPAPER3K_AVAILABLE = False
-    warning("⚠️ newspaper3k не установлен. Полный контент новостей недоступен.")
 
 def analyze_sentiment(text: str) -> float:
     """Анализирует тональность текста"""

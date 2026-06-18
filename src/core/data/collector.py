@@ -2,7 +2,7 @@
 
 import os
 import json
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.config import (
     SYMBOLS, DATA_DIR, ENABLE_NEWS, CHART_RANGES,
@@ -15,6 +15,19 @@ from src.utils.news_api import get_news_for_symbol
 from src.exchanges.exchange_factory import get_exchange_client
 
 
+def _runtime_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Вернуть актуальный runtime config.
+
+    В multiprocess runtime значения в src.config обновляются после импорта этого
+    модуля, поэтому нельзя полагаться на импортированные константы.
+    """
+    if config is not None:
+        return config
+
+    import src.config as config_module
+    return config_module.BOT_CONFIG
+
+
 def ensure_dirs():
     """Создает необходимые директории."""
     os.makedirs(f"{DATA_DIR}/prices", exist_ok=True)
@@ -22,18 +35,28 @@ def ensure_dirs():
     os.makedirs("charts", exist_ok=True)
 
 
-def fetch_prices(symbol: str) -> List[Dict]:
+def fetch_prices(symbol: str, config: Optional[Dict[str, Any]] = None) -> List[Dict]:
     """Получает свечи для символа на основе конфигурации стратегии."""
     info(f"📊 Получение цен для {symbol}...")
 
     client = get_exchange_client()
 
     try:
+        runtime_config = _runtime_config(config)
+        chart_ranges = runtime_config.get("CHART_RANGES", CHART_RANGES)
+        default_chart_range = runtime_config.get("DEFAULT_CHART_RANGE", DEFAULT_CHART_RANGE)
+        style_presets = runtime_config.get("STYLE_PRESETS", STYLE_PRESETS)
+        strategy_style = runtime_config.get("STRATEGY_STYLE", STRATEGY_STYLE)
+
         # Determine interval and limit from config
-        chart_config = CHART_RANGES.get(DEFAULT_CHART_RANGE, {})
+        chart_config = chart_ranges.get(default_chart_range, {})
 
         # 1. Get Target Interval (from Strategy Style)
-        current_preset = STYLE_PRESETS.get(STRATEGY_STYLE, STYLE_PRESETS["AISCALP"])
+        current_preset = (
+            style_presets.get(strategy_style)
+            or style_presets.get("AISCALP")
+            or {"timeframe": "1m"}
+        )
         target_interval_str = current_preset.get("timeframe", "1m")
 
         # 2. Get Duration in minutes (from Chart Range)
@@ -47,12 +70,12 @@ def fetch_prices(symbol: str) -> List[Dict]:
 
         # 3. Calculate Limit (Duration / Interval)
         interval_minutes = parse_interval_minutes(target_interval_str)
-        required_candles = int(total_duration_minutes // interval_minutes)
+        required_candles = max(1, int(total_duration_minutes // interval_minutes))
 
         limit = required_candles
         interval = target_interval_str
 
-        info(f"📐 Config: Style={STRATEGY_STYLE}, Range={DEFAULT_CHART_RANGE} ({total_duration_minutes}m), TF={interval}, Candles={limit}")
+        info(f"📐 Config: Style={strategy_style}, Range={default_chart_range} ({total_duration_minutes}m), TF={interval}, Candles={limit}")
 
         prices = client.get_kline_data(symbol, interval=interval, limit=limit)
 
@@ -82,9 +105,10 @@ def fetch_news(symbol: str) -> List[Dict]:
     return news
 
 
-def fetch_htf_prices(symbol: str) -> Optional[List[Dict]]:
+def fetch_htf_prices(symbol: str, config: Optional[Dict[str, Any]] = None) -> Optional[List[Dict]]:
     """Fetches higher-timeframe candles for AISCALP multi-timeframe analysis."""
-    mtf_cfg = BOT_CONFIG.get("AISCALP_SETTINGS", {}).get("multi_timeframe", {})
+    runtime_config = _runtime_config(config)
+    mtf_cfg = runtime_config.get("AISCALP_SETTINGS", {}).get("multi_timeframe", {})
     if not mtf_cfg.get("enabled", True):
         return None
 
@@ -107,23 +131,29 @@ def fetch_htf_prices(symbol: str) -> Optional[List[Dict]]:
         return None
 
 
-def process_symbol(symbol: str) -> bool:
+def process_symbol(symbol: str, config: Optional[Dict[str, Any]] = None) -> bool:
     """Обрабатывает один символ: собирает цены и новости."""
     try:
+        runtime_config = _runtime_config(config)
+        data_dir = runtime_config.get("DATA_DIR", DATA_DIR)
+        enable_news = runtime_config.get("ENABLE_NEWS", ENABLE_NEWS)
+        os.makedirs(f"{data_dir}/prices", exist_ok=True)
+        os.makedirs(f"{data_dir}/news", exist_ok=True)
+
         # Сбор цен
-        prices = fetch_prices(symbol)
+        prices = fetch_prices(symbol, runtime_config)
         symbol_file = get_filename(symbol)
-        prices_file = f"{DATA_DIR}/prices/{symbol_file}.json"
+        prices_file = f"{data_dir}/prices/{symbol_file}.json"
         with open(prices_file, "w") as f:
             json.dump(prices, f)
 
         # Сбор новостей
-        if ENABLE_NEWS:
+        if enable_news:
             news = fetch_news(symbol)
         else:
             news = []
 
-        news_file = f"{DATA_DIR}/news/{symbol_file}.json"
+        news_file = f"{data_dir}/news/{symbol_file}.json"
         with open(news_file, "w") as f:
             json.dump(news, f)
 

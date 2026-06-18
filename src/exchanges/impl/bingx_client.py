@@ -13,6 +13,7 @@ import time
 import hmac
 import hashlib
 import json
+import os
 import requests
 import threading
 from urllib.parse import urlencode
@@ -40,6 +41,16 @@ from ..dto.models import (
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _preview_payload(value, limit: int = 300) -> str:
+    """Return a compact log preview without dumping large market responses."""
+    try:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        text = str(value)
+    return text if len(text) <= limit else text[:limit] + "..."
+
 
 def info(msg):
     logger.info(msg)
@@ -82,6 +93,7 @@ class BingXClient(ExchangeClient):
         self.api_key = config.api_key
         self.secret_key = config.secret_key
         self.base_url = config.base_url
+        self.market_base_url = os.getenv("BINGX_MARKET_API_URL", "https://open-api.bingx.com")
 
         # Thread lock for cache operations
         self._cache_lock = threading.RLock()
@@ -118,7 +130,7 @@ class BingXClient(ExchangeClient):
         """
         # 1. Try WebSocket shared cache first
         try:
-            from src.exchanges.ws_data_provider import is_cache_ready, get_klines_from_shared_cache
+            from src.exchanges.bingx_ws_data_provider import is_cache_ready, get_klines_from_shared_cache
 
             if is_cache_ready(symbol):
                 # Get all available data from cache (ignore limit, take all)
@@ -169,7 +181,7 @@ class BingXClient(ExchangeClient):
         interval_map = self._config.supported_intervals
         bingx_interval = interval_map.get(interval, interval)
 
-        market_url = f"{self.base_url}/openApi/swap/v3/quote/klines"
+        market_url = f"{self.market_base_url}/openApi/swap/v3/quote/klines"
 
         params = {
             "symbol": formatted_symbol,
@@ -180,14 +192,20 @@ class BingXClient(ExchangeClient):
         max_retries = 3
         retry_delay = 1
         data = None
+        status_code = None
 
         for attempt in range(max_retries):
+            response = None
             try:
                 response = requests.get(market_url, params=params, timeout=6)
+                status_code = response.status_code
 
                 if response.status_code == 429:
                     retry_after = int(response.headers.get("Retry-After", retry_delay))
-                    warning(f"⚠️ Rate limited (429): klines {symbol}. Backing off {retry_after}s...")
+                    warning(
+                        f"⚠️ BingX klines rate limited: symbol={formatted_symbol}, "
+                        f"interval={bingx_interval}, limit={limit}, retry_after={retry_after}s"
+                    )
                     time.sleep(retry_after)
                     retry_delay = min(retry_delay * 2, 30)
                     continue
@@ -195,18 +213,56 @@ class BingXClient(ExchangeClient):
                 response.raise_for_status()
                 data = response.json()
                 break
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                warning(f"⚠️ Market data network error (attempt {attempt+1}/{max_retries}): {e}")
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ChunkedEncodingError) as e:
+                warning(
+                    f"⚠️ BingX klines network error "
+                    f"(attempt {attempt + 1}/{max_retries}): endpoint={market_url}, "
+                    f"symbol={formatted_symbol}, interval={bingx_interval}, limit={limit}, error={e}"
+                )
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
                     retry_delay *= 2
                 else:
-                    error(f"❌ BingX Market Data request failed: {e}")
+                    error(f"❌ BingX klines request failed after {max_retries} attempts: {e}")
                     return []
+            except ValueError as e:
+                body_preview = getattr(response, "text", "")
+                error(
+                    f"❌ BingX klines returned invalid JSON: endpoint={market_url}, "
+                    f"status={status_code}, symbol={formatted_symbol}, interval={bingx_interval}, "
+                    f"limit={limit}, body={body_preview[:300]}, error={e}"
+                )
+                return []
+            except Exception as e:
+                body_preview = getattr(response, "text", "")
+                error(
+                    f"❌ BingX klines request failed: endpoint={market_url}, status={status_code}, "
+                    f"symbol={formatted_symbol}, interval={bingx_interval}, limit={limit}, "
+                    f"body={body_preview[:300]}, error={e}"
+                )
+                return []
 
         if data and data.get("code") == 0:
             klines_data = data.get("data", [])
+            if not isinstance(klines_data, list):
+                warning(
+                    f"⚠️ BingX klines data has unexpected type: endpoint={market_url}, "
+                    f"status={status_code}, symbol={formatted_symbol}, interval={bingx_interval}, "
+                    f"limit={limit}, data_type={type(klines_data).__name__}, "
+                    f"data={_preview_payload(klines_data)}"
+                )
+                return []
+
+            if not klines_data:
+                warning(
+                    f"⚠️ BingX klines returned empty data: endpoint={market_url}, "
+                    f"status={status_code}, symbol={formatted_symbol}, interval={bingx_interval}, "
+                    f"limit={limit}, msg={data.get('msg', '')!r}"
+                )
+                return []
+
             result: KlinesList = []
+            skipped = 0
 
             for k in klines_data:
                 if isinstance(k, dict):
@@ -224,10 +280,12 @@ class BingXClient(ExchangeClient):
                     close_price = float(k[4])
                     volume = float(k[5])
                 else:
+                    skipped += 1
                     continue
 
                 # Skip if timestamp is missing
                 if ts_ms is None:
+                    skipped += 1
                     continue
 
                 # Создаем DTO объект
@@ -241,8 +299,32 @@ class BingXClient(ExchangeClient):
                 ))
 
             result.sort(key=lambda x: x.timestamp)
+            if result:
+                info(
+                    f"✅ BingX klines OK: symbol={formatted_symbol}, interval={bingx_interval}, "
+                    f"requested={limit}, received={len(result)}, skipped={skipped}, "
+                    f"first={result[0].timestamp}, last={result[-1].timestamp}"
+                )
+            else:
+                warning(
+                    f"⚠️ BingX klines parsed to empty result: endpoint={market_url}, "
+                    f"status={status_code}, symbol={formatted_symbol}, interval={bingx_interval}, "
+                    f"limit={limit}, raw_count={len(klines_data)}, skipped={skipped}"
+                )
             return result
 
+        if data is not None:
+            warning(
+                f"⚠️ BingX klines API error: endpoint={market_url}, status={status_code}, "
+                f"symbol={formatted_symbol}, interval={bingx_interval}, limit={limit}, "
+                f"code={data.get('code')}, msg={data.get('msg', '')!r}, "
+                f"data={_preview_payload(data.get('data'))}"
+            )
+        else:
+            warning(
+                f"⚠️ BingX klines returned no response data: endpoint={market_url}, "
+                f"symbol={formatted_symbol}, interval={bingx_interval}, limit={limit}"
+            )
         return []
 
     def _parse_ws_klines(self, klines: List[Dict]) -> KlinesList:
@@ -263,7 +345,7 @@ class BingXClient(ExchangeClient):
         """Получить текущий тикер."""
         formatted_symbol = self._format_symbol(symbol)
 
-        market_url = f"{self.base_url}/openApi/swap/v2/quote/ticker"
+        market_url = f"{self.market_base_url}/openApi/swap/v2/quote/ticker"
         params = {"symbol": formatted_symbol}
 
         try:
@@ -297,7 +379,7 @@ class BingXClient(ExchangeClient):
         """Получить стакан заявок."""
         formatted_symbol = self._format_symbol(symbol)
 
-        market_url = f"{self.base_url}/openApi/swap/v2/quote/depth"
+        market_url = f"{self.market_base_url}/openApi/swap/v2/quote/depth"
         params = {
             "symbol": formatted_symbol,
             "limit": min(limit, 100)
@@ -408,7 +490,7 @@ class BingXClient(ExchangeClient):
 
             formatted_symbol = self._format_symbol(symbol)
 
-        market_url = f"{self.base_url}/openApi/swap/v2/quote/premiumIndex"
+        market_url = f"{self.market_base_url}/openApi/swap/v2/quote/premiumIndex"
 
         try:
             response = requests.get(market_url, params={"symbol": formatted_symbol}, timeout=6)

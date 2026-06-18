@@ -1255,7 +1255,7 @@ class ScalpEngine:
 
     def _get_candles(self, limit: int = 5) -> list:
         """Get candles from WS cache, fallback to REST."""
-        from src.exchanges.ws_data_provider import get_klines_from_shared_cache, is_cache_ready
+        from src.exchanges.bingx_ws_data_provider import get_klines_from_shared_cache, is_cache_ready
 
         if is_cache_ready(self.symbol):
             candles = get_klines_from_shared_cache(self.symbol, limit)

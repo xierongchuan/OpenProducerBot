@@ -27,8 +27,8 @@ def get_prediction(prompt, model=None, max_tokens=None, temperature=None):
     use_temperature = temperature if temperature is not None else AI_TEMPERATURE
 
     if AI_PROVIDER == "openrouter":
-        headers["HTTP-Referer"] = "https://github.com/xierongchuan/OpenProducer" # Replace with actual site if exists
-        headers["X-Title"] = "OpenProducerBot"
+        headers["HTTP-Referer"] = "https://github.com/xierongchuan/ServoEngine" # Replace with actual site if exists
+        headers["X-Title"] = "Servo Engine"
     payload = {
         "model": use_model,
         "messages": [{"role": "user", "content": prompt}],

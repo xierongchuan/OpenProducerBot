@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# OpenProducerBot: остановка панели.
+# Servo Engine: остановка панели.
 # 1. Останавливает контейнер
 # 2. Останавливает ngrok (если был)
 # 3. Останавливает SSH tunnel + cloudflared на VPS (если был)

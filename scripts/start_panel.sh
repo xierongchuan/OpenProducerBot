@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# OpenProducerBot: запуск панели одной командой.
+# Servo Engine: запуск панели одной командой.
 #
 # Режимы:
 #   ngrok  (default) — локальная разработка, ngrok для HTTPS
@@ -57,7 +57,7 @@ if [ -z "$MODE" ]; then
     fi
 fi
 
-echo "=== OpenProducerBot Panel ==="
+echo "=== Servo Engine Panel ==="
 echo "  Режим: $MODE"
 echo ""
 

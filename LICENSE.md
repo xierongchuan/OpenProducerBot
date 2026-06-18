@@ -1,5 +1,5 @@
 # 🛡️ Strict Proprietary Software License
-**For OpenProducerBot**
+**For Servo Engine**
 
 This software and its source code, documentation, and all associated files (collectively, the "Software") are the sole property of [**https://github.com/xierongchuan**](https://github.com/xierongchuan), an individual ("Licensor").
 
@@ -48,4 +48,4 @@ Any legal dispute shall be resolved in the courts of the Licensor's jurisdiction
 
 ---
 
-**Any use of OpenProducerBot without explicit written permission is a violation of this license. All rights reserved.**
+**Any use of Servo Engine without explicit written permission is a violation of this license. All rights reserved.**

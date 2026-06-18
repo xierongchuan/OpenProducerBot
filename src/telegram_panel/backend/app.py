@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     logger.info("Panel backend stopped")
 
 
-app = FastAPI(title="OpenProducerBot Panel", lifespan=lifespan)
+app = FastAPI(title="Servo Engine Panel", lifespan=lifespan)
 
 
 @app.exception_handler(Exception)

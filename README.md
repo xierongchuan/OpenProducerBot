@@ -1,10 +1,10 @@
-# OpenProducer — AI-Powered Algorithmic Trading System
+# Servo Engine — AI-Powered Algorithmic Trading System
 
 ![License](https://img.shields.io/badge/license-Proprietary-red.svg)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![Status](https://img.shields.io/badge/status-active-success)
 
-**OpenProducer** — профессиональная автоматизированная торговая система для торговли криптовалютными фьючерсами на бирже **BingX** (Standard & VST Futures).
+**Servo Engine** — профессиональная автоматизированная торговая система для торговли криптовалютными фьючерсами на бирже **BingX** (Standard & VST Futures).
 
 Система использует модели искусственного интеллекта (**Gemini**, **Claude**, **DeepSeek** и другие через **OpenRouter**) для принятия торговых решений, комбинируя детерминированный технический анализ с AI-подтверждением, адаптивным риск-менеджментом и многопроцессной архитектурой.
 
@@ -43,7 +43,7 @@
 ### 1. Клонирование и настройка
 
 ```bash
-git clone <repo> && cd OpenProducerBot
+git clone <repo> && cd Servo Engine
 cp .env.example .env
 ```
 

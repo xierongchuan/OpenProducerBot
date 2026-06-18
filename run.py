@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Entry point for the OpenProducer Trading Bot.
+Entry point for the Servo Engine Trading Bot.
 """
 import sys
 import os

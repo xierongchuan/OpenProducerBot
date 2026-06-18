@@ -9,7 +9,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  OpenProducer - Мониторинг логов      ${NC}"
+echo -e "${BLUE}  Servo Engine - Мониторинг логов      ${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -19,13 +19,13 @@ cd "$(dirname "$0")/.."
 show_stats() {
     echo -e "${GREEN}📊 СТАТИСТИКА:${NC}"
     echo ""
-    
+
     if [ -f "data/steps.log" ]; then
         TOTAL_EVENTS=$(wc -l < data/steps.log)
         ERRORS=$(grep -c "ERROR" data/steps.log 2>/dev/null || echo "0")
         echo -e "  📄 Лог системы: ${YELLOW}$TOTAL_EVENTS${NC} событий, ${RED}$ERRORS${NC} ошибок"
     fi
-    
+
     if [ -f "data/trades.log" ]; then
         TOTAL_TRADES=$(wc -l < data/trades.log)
         OPENED=$(grep -c "открыт ордер" data/trades.log 2>/dev/null || echo "0")

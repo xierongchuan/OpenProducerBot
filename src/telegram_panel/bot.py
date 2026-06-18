@@ -1,4 +1,4 @@
-"""Telegram bot for OpenProducerBot trading panel.
+"""Telegram bot for Servo Engine trading panel.
 
 Provides command handlers for monitoring trades, viewing charts/logs,
 and an inline button to launch the Telegram Mini App.
@@ -178,7 +178,7 @@ def allowed_users_only(func):
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Welcome message with Mini App launcher."""
     text = (
-        "OpenProducerBot Trading Panel\n\n"
+        "Servo Engine Trading Panel\n\n"
         "Available commands:\n"
         "/status - Quick status overview\n"
         "/trades - Active positions\n"

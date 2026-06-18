@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# OpenProducerBot: туннель для Telegram Panel.
+# Servo Engine: туннель для Telegram Panel.
 #
 # Схема:
 #   localhost:PANEL_PORT → SSH tunnel → VPS:VPS_PORT → cloudflared → Cloudflare (HTTPS)
@@ -120,7 +120,7 @@ start_tunnel() {
         return 0
     fi
 
-    echo "=== OpenProducerBot Tunnel ==="
+    echo "=== Servo Engine Tunnel ==="
     echo "  Локально:  localhost:${LOCAL_PORT}"
     echo "  VPS:       ${REMOTE_HOST}:${REMOTE_PORT}"
     echo ""

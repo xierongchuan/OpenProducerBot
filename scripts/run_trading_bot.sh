@@ -33,13 +33,13 @@ fi
 mkdir -p data/prices data/news data/logs charts
 
 # Логируем начало
-log_message "Запуск торгового бота OpenProducer..."
+log_message "Запуск торгового бота Servo Engine..."
 log_message "Биржа: $EXCHANGE"
 log_message "Режим: $MODE"
 log_message "🚀 Запуск торгового бота в контейнере..."
 
 # Собираем образ с зависимостями (пересобирается только при изменении requirements.txt)
-IMAGE_NAME="openproducer-bot"
+IMAGE_NAME="Servo Engine-bot"
 log_message "Проверка/сборка образа $IMAGE_NAME..."
 podman build -q -t "$IMAGE_NAME" .
 

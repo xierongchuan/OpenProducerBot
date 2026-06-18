@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# OpenProducerBot: одноразовая настройка VPS для Telegram Panel.
+# Servo Engine: одноразовая настройка VPS для Telegram Panel.
 # Устанавливает nginx + self-signed SSL, настраивает проксирование HTTPS → localhost.
 #
 # Использование: ./scripts/setup_server.sh

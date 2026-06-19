@@ -155,8 +155,11 @@ async def enqueue_symbol_runtime_command(
 
     symbol = data.get("symbol")
     instance_id = data.get("instance_id")
-    if not symbol and not instance_id:
-        raise HTTPException(status_code=400, detail="symbol or instance_id is required")
+    instance_ids = data.get("instance_ids")
+    if instance_ids is not None and not isinstance(instance_ids, list):
+        raise HTTPException(status_code=400, detail="instance_ids must be a list")
+    if not symbol and not instance_id and not instance_ids:
+        raise HTTPException(status_code=400, detail="symbol, instance_id or instance_ids is required")
 
     try:
         command = write_symbol_command(
@@ -164,6 +167,7 @@ async def enqueue_symbol_runtime_command(
             requested_by=_extract_user_label(user),
             symbol=symbol,
             instance_id=instance_id,
+            instance_ids=instance_ids,
             reason=data.get("reason") or "panel",
         )
     except (OSError, ValueError) as exc:

@@ -22,6 +22,7 @@ import {
   stopRuntime,
   restartRuntime,
   restartSymbolRuntime,
+  restartSymbolRuntimeBatch,
   startSymbolRuntime,
   stopSymbolRuntime,
   type ConfigSystemInfo,
@@ -116,6 +117,31 @@ export function Settings() {
     } catch {}
   };
 
+  const normalizeSymbol = (symbol: string) => symbol.replace(/[-/]/g, '').toUpperCase();
+
+  const getRestartableInstances = () => {
+    const disabled = new Set((symbolProfiles?.disabled_symbols || []).map(normalizeSymbol));
+    return (symbolProfiles?.strategy_instances || []).filter(
+      (instance) => instance.enabled && !disabled.has(normalizeSymbol(instance.symbol))
+    );
+  };
+
+  const hasActivePosition = (symbol: string) => {
+    const target = normalizeSymbol(symbol);
+    return activeTrades.some((trade) => normalizeSymbol(trade.symbol) === target);
+  };
+
+  const confirmRestartForInstances = (instances: StrategyInstance[], reason: string) => {
+    const activeSymbols = Array.from(
+      new Set(instances.filter((instance) => hasActivePosition(instance.symbol)).map((instance) => instance.symbol))
+    );
+    if (activeSymbols.length === 0) return true;
+    return confirm(
+      `Изменение ${reason} затронет активные позиции: ${activeSymbols.join(', ')}. ` +
+      'Сохранить конфиг и перезапустить процессы этих символов?'
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -171,9 +197,24 @@ export function Settings() {
           config={tradingConfig}
           onUpdate={async (data) => {
             try {
+              const instancesToRestart = getRestartableInstances();
+              if (instancesToRestart.length > 0 && !confirmRestartForInstances(instancesToRestart, 'Position & Risk')) {
+                return;
+              }
               const result = await updateTradingConfig(data);
+              if (instancesToRestart.length > 0) {
+                await restartSymbolRuntimeBatch(
+                  instancesToRestart.map((instance) => instance.id),
+                  'trading_config_changed'
+                );
+              }
               setTradingConfig(result.config);
-              showMessage({ type: 'success', text: 'Trading settings saved' });
+              showMessage({
+                type: 'success',
+                text: instancesToRestart.length > 0
+                  ? `Trading settings saved; restart queued for ${instancesToRestart.length} instance(s)`
+                  : 'Trading settings saved',
+              });
               hapticFeedback('success');
             } catch (err) {
               showMessage({ type: 'error', text: 'Failed to save settings' });
@@ -201,7 +242,12 @@ export function Settings() {
       )}
 
       {tab === 'profiles' && profiles && (
-        <ProfilesTab profiles={profiles} onRefresh={fetchAll} />
+        <ProfilesTab
+          profiles={profiles}
+          symbolProfiles={symbolProfiles}
+          activeTrades={activeTrades}
+          onRefresh={fetchAll}
+        />
       )}
 
       {tab === 'runtime' && symbolProfiles && profiles && strategies && (
@@ -537,9 +583,13 @@ function InfrastructureTab({
 
 function ProfilesTab({
   profiles,
+  symbolProfiles,
+  activeTrades,
   onRefresh,
 }: {
   profiles: ProfilesResponse;
+  symbolProfiles: SymbolProfilesResponse | null;
+  activeTrades: Trade[];
   onRefresh: () => void;
 }) {
   const [profileUsages, setProfileUsages] = useState<Record<string, { isUsed: boolean; usageCount: number }>>({});
@@ -550,6 +600,35 @@ function ProfilesTab({
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [profileFilter, setProfileFilter] = useState<string>('all');
+
+  const normalizeSymbol = (symbol: string) => symbol.replace(/[-/]/g, '').toUpperCase();
+
+  const getInstancesUsingProfile = (profileName: string): StrategyInstance[] => {
+    const disabled = new Set((symbolProfiles?.disabled_symbols || []).map(normalizeSymbol));
+    return (symbolProfiles?.strategy_instances || []).filter(
+      (instance) =>
+        instance.profile === profileName &&
+        instance.enabled &&
+        !disabled.has(normalizeSymbol(instance.symbol))
+    );
+  };
+
+  const confirmProfileRestart = (instances: StrategyInstance[], profileName: string): boolean => {
+    const activeSymbols = Array.from(
+      new Set(
+        instances
+          .filter((instance) =>
+            activeTrades.some((trade) => normalizeSymbol(trade.symbol) === normalizeSymbol(instance.symbol))
+          )
+          .map((instance) => instance.symbol)
+      )
+    );
+    if (activeSymbols.length === 0) return true;
+    return confirm(
+      `Профиль "${profileName}" используется активными позициями: ${activeSymbols.join(', ')}. ` +
+      'Сохранить профиль и перезапустить процессы этих символов?'
+    );
+  };
 
   // Load profile usages in parallel
   useEffect(() => {
@@ -720,7 +799,17 @@ function ProfilesTab({
             setEditLoading(true);
             setEditError(null);
             try {
+              const affectedInstances = getInstancesUsingProfile(editModal.name);
+              if (affectedInstances.length > 0 && !confirmProfileRestart(affectedInstances, editModal.name)) {
+                return;
+              }
               await updateProfile(editModal.name, updatedProfile as unknown as Record<string, unknown>);
+              if (affectedInstances.length > 0) {
+                await restartSymbolRuntimeBatch(
+                  affectedInstances.map((instance) => instance.id),
+                  `profile_${editModal.name}_changed`
+                );
+              }
               setEditModal({ open: false, name: '', profile: null });
               onRefresh();
             } catch (err) {

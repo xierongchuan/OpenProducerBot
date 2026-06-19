@@ -524,6 +524,7 @@ export interface SymbolRuntimeCommandResponse {
     action: 'start' | 'stop' | 'restart';
     symbol?: string;
     instance_id?: string;
+    instance_ids?: string[];
     requested_by: string;
     requested_at: string;
     requested_at_ts: number;
@@ -555,7 +556,7 @@ export function restartRuntime() {
 
 export function commandSymbolRuntime(
   action: 'start' | 'stop' | 'restart',
-  data: { symbol?: string; instance_id?: string; reason?: string }
+  data: { symbol?: string; instance_id?: string; instance_ids?: string[]; reason?: string }
 ) {
   return fetchAPI<SymbolRuntimeCommandResponse>(`/api/runtime/symbol/${action}`, {
     method: 'POST',
@@ -573,4 +574,8 @@ export function startSymbolRuntime(instanceId: string, symbol?: string, reason =
 
 export function stopSymbolRuntime(instanceId: string, symbol?: string, reason = 'manual_stop') {
   return commandSymbolRuntime('stop', { instance_id: instanceId, symbol, reason });
+}
+
+export function restartSymbolRuntimeBatch(instanceIds: string[], reason = 'batch_restart') {
+  return commandSymbolRuntime('restart', { instance_ids: instanceIds, reason });
 }

@@ -48,13 +48,15 @@ def build_symbol_command(
     requested_by: str = "panel",
     symbol: str | None = None,
     instance_id: str | None = None,
+    instance_ids: list[str] | None = None,
     reason: str | None = None,
 ) -> dict[str, Any]:
     action = str(action or "").lower()
     if action not in ALLOWED_ACTIONS:
         raise ValueError(f"Unknown symbol runtime action: {action}")
-    if not symbol and not instance_id:
-        raise ValueError("symbol or instance_id is required")
+    normalized_instance_ids = [str(item).lower() for item in (instance_ids or []) if str(item).strip()]
+    if not symbol and not instance_id and not normalized_instance_ids:
+        raise ValueError("symbol, instance_id or instance_ids is required")
 
     command: dict[str, Any] = {
         "id": uuid.uuid4().hex,
@@ -67,6 +69,8 @@ def build_symbol_command(
         command["symbol"] = normalize_symbol_key(symbol)
     if instance_id:
         command["instance_id"] = str(instance_id).lower()
+    if normalized_instance_ids:
+        command["instance_ids"] = normalized_instance_ids
     if reason:
         command["reason"] = str(reason)
     return command
@@ -78,6 +82,7 @@ def write_symbol_command(
     requested_by: str = "panel",
     symbol: str | None = None,
     instance_id: str | None = None,
+    instance_ids: list[str] | None = None,
     reason: str | None = None,
     command_path: Path = COMMAND_PATH,
 ) -> dict[str, Any]:
@@ -86,8 +91,8 @@ def write_symbol_command(
         requested_by=requested_by,
         symbol=symbol,
         instance_id=instance_id,
+        instance_ids=instance_ids,
         reason=reason,
     )
     atomic_write_json(command_path, command)
     return command
-

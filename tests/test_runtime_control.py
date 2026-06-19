@@ -109,6 +109,13 @@ def test_symbol_runtime_command_payload_normalizes_symbol():
     assert command["requested_by"] == "test"
 
 
+def test_symbol_runtime_command_payload_accepts_instance_ids():
+    command = build_symbol_command("restart", instance_ids=["BTC_MACDX", "eth_hybrid"], requested_by="test")
+
+    assert command["action"] == "restart"
+    assert command["instance_ids"] == ["btc_macdx", "eth_hybrid"]
+
+
 class _JsonRequest:
     def __init__(self, data):
         self._data = data
@@ -146,6 +153,7 @@ def test_symbol_runtime_route_writes_command(monkeypatch):
             "requested_by": "telegram:12345",
             "symbol": "BTCUSDT",
             "instance_id": "btc_macdx",
+            "instance_ids": None,
             "reason": "panel",
         },
     )]

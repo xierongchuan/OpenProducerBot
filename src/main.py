@@ -261,6 +261,9 @@ def run_multiprocess_pipeline():
             warning(f"⚠️ Worker {instance_id} завершился (exit={exit_code})")
 
     def select_command_targets(command, active_instances):
+        instance_ids = command.get("instance_ids")
+        if isinstance(instance_ids, list) and instance_ids:
+            return sorted({str(item).lower() for item in instance_ids if str(item).strip()})
         instance_id = str(command.get("instance_id") or "").lower()
         symbol = command.get("symbol")
         if instance_id:

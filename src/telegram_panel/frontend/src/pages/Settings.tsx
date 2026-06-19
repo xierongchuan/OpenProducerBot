@@ -1110,7 +1110,7 @@ function RuntimeTab({
                 {runtimeStateLabel(runtimeState)}
               </span>
               <span className="text-[10px] text-tg-hint">
-                Runtime PID: {runtimeStatus?.runtime_pid ?? '-'}
+                Supervisor PID: {runtimeStatus?.supervisor_pid ?? '-'}
               </span>
             </div>
           </div>
@@ -1126,8 +1126,8 @@ function RuntimeTab({
 
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl bg-tg-bg p-3 border border-white/10">
-            <div className="text-[10px] uppercase text-tg-hint">Supervisor</div>
-            <div className="text-sm font-semibold text-tg-text">{runtimeStatus?.supervisor_pid ?? '-'}</div>
+            <div className="text-[10px] uppercase text-tg-hint">Runtime PID</div>
+            <div className="text-sm font-semibold text-tg-text">{runtimeStatus?.runtime_pid ?? '-'}</div>
           </div>
           <div className="rounded-xl bg-tg-bg p-3 border border-white/10">
             <div className="text-[10px] uppercase text-tg-hint">Started</div>
